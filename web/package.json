@@ -13,7 +13,8 @@
     "react": "latest",
     "react-dom": "latest",
     "@clerk/nextjs": "latest",
-    "@supabase/supabase-js": "latest"
+    "@supabase/supabase-js": "latest",
+    "svix": "latest"
   },
   "devDependencies": {
     "typescript": "latest",
