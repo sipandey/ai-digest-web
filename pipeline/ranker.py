@@ -41,8 +41,10 @@ def _chunked(items: list, size: int):
         yield items[start : start + size]
 
 
-def _clean_text(text: str, max_chars: int) -> str:
-    return re.sub(r"\s+", " ", text or "").strip()[:max_chars]
+def _clean_text(text: str, max_chars: int = 0) -> str:
+    """Normalise whitespace. Pass max_chars=0 (default) for no truncation."""
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    return cleaned[:max_chars] if max_chars > 0 else cleaned
 
 
 def _truncate_words(text: str, max_words: int) -> str:
@@ -227,7 +229,7 @@ def _build_summary_prompt(papers: list[dict], user_config: dict) -> str:
             f"\nPaper {i}:\n"
             f"ID: {_arxiv_id(paper)}\n"
             f"Title: {paper['title']}\n"
-            f"Abstract: {_clean_text(paper.get('abstract') or '', 500)}\n"
+            f"Abstract: {_clean_text(paper.get('abstract') or '')}\n"
             f"Category: {paper.get('category', '')}\n"
             f"Group: {paper.get('matched_group', '')}\n"
             f"Score: {paper.get('score', '')}\n"
