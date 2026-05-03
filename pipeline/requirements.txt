@@ -1,2 +1,6 @@
-supabase>=2.0.0
-httpx>=0.27.0
+arxiv
+openai
+notion-client
+python-dotenv
+requests
+supabase
