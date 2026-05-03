@@ -249,7 +249,7 @@ export default function SettingsView() {
         body: JSON.stringify({ notionToken, notionDatabaseId }),
       });
       const data = await res.json();
-      if (res.ok) {
+      if (data.success) {
         setConnectionStatus("success");
       } else {
         setConnectionStatus("error");

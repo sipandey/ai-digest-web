@@ -103,7 +103,7 @@ export default function OnboardingForm() {
         }),
       });
       const data = await res.json();
-      if (res.ok) {
+      if (data.success) {
         setConnectionStatus("success");
       } else {
         setConnectionStatus("error");
