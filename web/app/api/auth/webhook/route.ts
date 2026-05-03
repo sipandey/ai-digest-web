@@ -1,12 +1,7 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { Webhook } from "svix";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabaseAdmin } from "@/lib/supabase";
 
 type ClerkUserCreatedEvent = {
   type: string;
@@ -27,7 +22,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Verify signature
   const headerPayload = await headers();
   const svixId = headerPayload.get("svix-id");
   const svixTimestamp = headerPayload.get("svix-timestamp");
@@ -63,13 +57,13 @@ export async function POST(req: Request) {
 
   const { id: clerkId, email_addresses, first_name, last_name } = event.data;
 
-  const primaryEmail = email_addresses.find((e) => e.primary)?.email_address
-    ?? email_addresses[0]?.email_address;
+  const primaryEmail =
+    email_addresses.find((e) => e.primary)?.email_address ??
+    email_addresses[0]?.email_address;
 
   const name = [first_name, last_name].filter(Boolean).join(" ") || null;
 
-  // Insert user
-  const { data: user, error: userError } = await supabase
+  const { data: user, error: userError } = await supabaseAdmin
     .from("users")
     .insert({ clerk_id: clerkId, email: primaryEmail, name })
     .select("id")
@@ -83,8 +77,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // Insert default user config
-  const { error: configError } = await supabase
+  const { error: configError } = await supabaseAdmin
     .from("user_configs")
     .insert({ user_id: user.id });
 

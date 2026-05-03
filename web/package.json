@@ -9,17 +9,17 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@clerk/nextjs": "latest",
+    "@supabase/supabase-js": "latest",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "@clerk/nextjs": "latest",
-    "@supabase/supabase-js": "latest",
     "svix": "latest"
   },
   "devDependencies": {
-    "typescript": "latest",
-    "tailwindcss": "latest",
+    "@types/node": "latest",
     "@types/react": "latest",
-    "@types/node": "latest"
+    "tailwindcss": "latest",
+    "typescript": "latest"
   }
 }
