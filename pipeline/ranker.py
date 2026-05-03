@@ -103,6 +103,7 @@ def _profile_hash(user_config: dict) -> str:
         "score_model": SCORE_MODEL,
         "summary_model": SUMMARY_MODEL,
         "prompt_version": PROMPT_VERSION,
+        "score_threshold": SCORE_THRESHOLD,
     }
     serialized = json.dumps(
         normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=False
