@@ -63,4 +63,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PIPELINE_USER_ID: ${{ github.event.inputs.user_id }}
           PIPELINE_RUN_DATE: ${{ github.event.inputs.run_date }}
+          # Use the Batch API (50% cost) for scheduled runs only.
+          # workflow_dispatch covers both the "Run now" button and manual
+          # GitHub Actions triggers — both need a fast synchronous response.
+          PIPELINE_USE_BATCH: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
         run: python pipeline.py

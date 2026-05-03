@@ -1,9 +1,11 @@
 import hashlib
+import io
 import json
 import logging
 import math
 import os
 import re
+import time
 from typing import Optional
 
 from openai import OpenAI
@@ -18,6 +20,8 @@ SCORE_BATCH_SIZE = 40
 SUMMARY_BATCH_SIZE = 12
 MAX_SHORTLIST = 40          # max papers sent to the LLM per user per day
 PROMPT_VERSION = 1
+BATCH_POLL_INTERVAL = 30    # seconds between batch status checks
+BATCH_TIMEOUT = 7200        # 2-hour ceiling — well within the 24h batch window
 CACHE_TABLE = "paper_rankings_cache"
 CACHE_QUERY_CHUNK_SIZE = 100
 SUMMARY_FIELDS = (
@@ -355,6 +359,193 @@ def _save_cached_rankings(rows: list[dict]) -> None:
         log.warning("Ranking cache write unavailable, continuing without cache: %s", exc)
 
 
+# ── Batch API helpers ──────────────────────────────────────────────────────────
+
+def _submit_and_poll_batch(
+    client: OpenAI,
+    requests: list[dict],
+    label: str,
+) -> dict[str, str]:
+    """Upload *requests* as an OpenAI Batch job and poll until done.
+
+    Returns {custom_id: raw_content_str}.
+    Raises RuntimeError on batch failure, TimeoutError if BATCH_TIMEOUT exceeded.
+    """
+    jsonl_bytes = "\n".join(json.dumps(r) for r in requests).encode()
+    file_obj = client.files.create(
+        file=("batch.jsonl", io.BytesIO(jsonl_bytes), "application/jsonl"),
+        purpose="batch",
+    )
+    log.info("Batch [%s]: uploaded %d request(s), file_id=%s", label, len(requests), file_obj.id)
+
+    batch = client.batches.create(
+        input_file_id=file_obj.id,
+        endpoint="/v1/chat/completions",
+        completion_window="24h",
+    )
+    log.info("Batch [%s]: submitted, batch_id=%s", label, batch.id)
+
+    deadline = time.monotonic() + BATCH_TIMEOUT
+    while time.monotonic() < deadline:
+        batch = client.batches.retrieve(batch.id)
+        counts = batch.request_counts
+
+        if batch.status == "completed":
+            log.info(
+                "Batch [%s]: completed — %d succeeded, %d failed",
+                label, counts.completed, counts.failed,
+            )
+            break
+
+        if batch.status in ("failed", "expired", "cancelled"):
+            raise RuntimeError(
+                f"Batch [{label}] ended with status '{batch.status}'"
+            )
+
+        log.info(
+            "Batch [%s]: %s (%d/%d done) — next check in %ds",
+            label, batch.status, counts.completed, counts.total, BATCH_POLL_INTERVAL,
+        )
+        time.sleep(BATCH_POLL_INTERVAL)
+    else:
+        raise TimeoutError(
+            f"Batch [{label}] did not complete within {BATCH_TIMEOUT}s"
+        )
+
+    if not batch.output_file_id:
+        log.error("Batch [%s]: completed but output_file_id is missing", label)
+        return {}
+
+    raw = client.files.content(batch.output_file_id).text
+    results: dict[str, str] = {}
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        cid = item["custom_id"]
+        try:
+            content = item["response"]["body"]["choices"][0]["message"]["content"]
+            results[cid] = content
+        except (KeyError, IndexError, TypeError):
+            log.warning("Batch [%s]: missing content for custom_id=%s", label, cid)
+            results[cid] = "{}"
+
+    # Clean up uploaded input file (best-effort)
+    try:
+        client.files.delete(file_obj.id)
+    except Exception:
+        pass
+
+    return results
+
+
+def _score_batches_batch_api(
+    papers: list[dict], user_config: dict, client: OpenAI, label: str
+) -> tuple[dict[str, dict], int]:
+    """Batch-API variant of scoring. Returns (score_map, n_requests_submitted)."""
+    if not papers:
+        return {}, 0
+
+    requests: list[dict] = []
+    batch_map: dict[str, list[dict]] = {}  # custom_id → papers in that sub-batch
+
+    for i, start in enumerate(range(0, len(papers), SCORE_BATCH_SIZE)):
+        batch = papers[start : start + SCORE_BATCH_SIZE]
+        cid = f"score-{label}-{i}"
+        batch_map[cid] = batch
+        requests.append({
+            "custom_id": cid,
+            "method": "POST",
+            "url": "/v1/chat/completions",
+            "body": {
+                "model": SCORE_MODEL,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a research paper scoring assistant. Respond only with valid JSON.",
+                    },
+                    {"role": "user", "content": _build_score_prompt(batch, user_config)},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0,
+            },
+        })
+
+    raw_results = _submit_and_poll_batch(client, requests, f"scoring-{label}")
+
+    scored: dict[str, dict] = {}
+    for cid, content in raw_results.items():
+        batch = batch_map.get(cid, [])
+        try:
+            result = json.loads(content)
+            for ranked in result.get("papers", []):
+                scored[ranked["arxiv_id"]] = {
+                    "score": _coerce_score(ranked.get("score")),
+                    "include": bool(ranked.get("include")),
+                }
+        except (json.JSONDecodeError, KeyError):
+            log.error("Batch scoring: failed to parse result for custom_id=%s", cid)
+            for paper in batch:
+                scored[_arxiv_id(paper)] = {"score": 0.0, "include": False}
+
+    return scored, len(requests)
+
+
+def _summarize_batches_batch_api(
+    papers: list[dict], user_config: dict, client: OpenAI, label: str
+) -> tuple[dict[str, dict], int]:
+    """Batch-API variant of summarisation. Returns (summary_map, n_requests_submitted)."""
+    if not papers:
+        return {}, 0
+
+    requests: list[dict] = []
+    batch_map: dict[str, list[dict]] = {}
+
+    for i, start in enumerate(range(0, len(papers), SUMMARY_BATCH_SIZE)):
+        batch = papers[start : start + SUMMARY_BATCH_SIZE]
+        cid = f"summary-{label}-{i}"
+        batch_map[cid] = batch
+        requests.append({
+            "custom_id": cid,
+            "method": "POST",
+            "url": "/v1/chat/completions",
+            "body": {
+                "model": SUMMARY_MODEL,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You prepare concise paper summaries. Respond only with valid JSON.",
+                    },
+                    {"role": "user", "content": _build_summary_prompt(batch, user_config)},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.2,
+            },
+        })
+
+    raw_results = _submit_and_poll_batch(client, requests, f"summary-{label}")
+
+    summaries: dict[str, dict] = {}
+    for cid, content in raw_results.items():
+        batch = batch_map.get(cid, [])
+        try:
+            result = json.loads(content)
+            for summary in result.get("papers", []):
+                summaries[summary["arxiv_id"]] = {
+                    "problem": summary.get("problem"),
+                    "approach": summary.get("approach"),
+                    "results": summary.get("results"),
+                    "builder_takeaway": summary.get("builder_takeaway"),
+                    "learning_path": summary.get("learning_path"),
+                }
+        except (json.JSONDecodeError, KeyError):
+            log.error("Batch summarisation: failed to parse result for custom_id=%s", cid)
+            for paper in batch:
+                summaries[_arxiv_id(paper)] = _fallback_summary(paper)
+
+    return summaries, len(requests)
+
+
 def _score_batches(
     papers: list[dict], user_config: dict, client: OpenAI
 ) -> tuple[dict[str, dict], int]:
@@ -452,7 +643,11 @@ def _summarize_batches(
     return summaries, call_count
 
 
-def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
+def rank_papers(
+    papers: list[dict],
+    user_config: dict,
+    use_batch: bool = False,
+) -> list[dict]:
     """Score *papers* for *user_config* using GPT-4o-mini.
 
     Processing pipeline per user:
@@ -460,6 +655,10 @@ def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
       2. Cache      — load any previous scores+summaries for candidates
       3. Scoring    — LLM pass 1: score/include only for cache misses
       4. Summarize  — LLM pass 2: summaries for papers that passed threshold
+
+    When use_batch=True the LLM calls go through the OpenAI Batch API
+    (50% cost, ~minutes latency). Use for scheduled runs.
+    When use_batch=False the calls are synchronous. Use for on-demand runs.
 
     Results are cached per user, fetch date, and profile hash.
     """
@@ -528,7 +727,13 @@ def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
     )
 
     # ── Phase 2: score cache misses ───────────────────────────────────────────
-    score_map, n_score_calls = _score_batches(papers_to_score, user_config, client)
+    batch_label = (user_id or "anon")[:16]
+    if use_batch:
+        score_map, n_score_calls = _score_batches_batch_api(
+            papers_to_score, user_config, client, batch_label
+        )
+    else:
+        score_map, n_score_calls = _score_batches(papers_to_score, user_config, client)
 
     newly_passing = 0
     for paper in papers_to_score:
@@ -560,7 +765,12 @@ def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
     )
 
     # ── Phase 3: summarize passing papers not fully in cache ──────────────────
-    summaries, n_summary_calls = _summarize_batches(papers_to_summarize, user_config, client)
+    if use_batch:
+        summaries, n_summary_calls = _summarize_batches_batch_api(
+            papers_to_summarize, user_config, client, batch_label
+        )
+    else:
+        summaries, n_summary_calls = _summarize_batches(papers_to_summarize, user_config, client)
 
     for paper in papers_to_summarize:
         summary = summaries.get(_arxiv_id(paper)) or _fallback_summary(paper)

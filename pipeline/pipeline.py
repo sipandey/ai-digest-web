@@ -49,7 +49,12 @@ def _upsert_run(user_id: str, run_date: str, **fields) -> str:
 def main() -> None:
     run_date = os.environ.get("PIPELINE_RUN_DATE", date.today().isoformat())
     target_user_id = os.environ.get("PIPELINE_USER_ID")
-    log.info("=== Pipeline starting for %s ===", run_date)
+    use_batch = os.environ.get("PIPELINE_USE_BATCH", "").lower() == "true"
+    log.info(
+        "=== Pipeline starting for %s (mode=%s) ===",
+        run_date,
+        "batch" if use_batch else "direct",
+    )
 
     # ── Shared fetch (runs once, cached for the day) ──────────────────────────
     papers = fetch_papers(run_date)
@@ -84,7 +89,7 @@ def main() -> None:
 
         try:
             # Per-user scoring
-            scored = rank_papers(papers, user_config)
+            scored = rank_papers(papers, user_config, use_batch=use_batch)
             log.info("[%s] %d / %d papers passed threshold", email, len(scored), len(papers))
 
             if not scored:
