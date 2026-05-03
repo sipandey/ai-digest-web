@@ -10,38 +10,38 @@ The service is built for developers who want to stay current with AI research wi
 
 ```
 ai-digest-web/
-├── web/                        Next.js 15 app (TypeScript + Tailwind + Clerk)
+├── web/                        Next.js app (TypeScript + Tailwind + Clerk)
 │   ├── app/
-│   │   ├── layout.tsx          Root layout — ClerkProvider + Inter font
-│   │   ├── page.tsx            Public landing page
-│   │   ├── signup/page.tsx     Clerk SignUp component
-│   │   ├── login/page.tsx      Clerk SignIn component
-│   │   ├── dashboard/page.tsx  Daily digest status + run history
-│   │   ├── onboarding/page.tsx Multi-step setup (profile → topics → Notion)
-│   │   ├── settings/page.tsx   Edit profile, delivery settings, Notion
+│   │   ├── layout.tsx                  Root layout — ClerkProvider + Inter font
+│   │   ├── page.tsx                    Public landing page
+│   │   ├── signup/[[...rest]]/page.tsx Clerk SignUp component (catch-all)
+│   │   ├── login/[[...rest]]/page.tsx  Clerk SignIn component (catch-all)
+│   │   ├── dashboard/page.tsx          Daily digest status + run history
+│   │   ├── onboarding/page.tsx         Multi-step setup (profile → topics → Notion)
+│   │   ├── settings/page.tsx           Edit profile, delivery settings, Notion
 │   │   └── api/
-│   │       ├── auth/webhook/   Clerk webhook — creates user rows on signup
-│   │       ├── users/config/   GET + POST + PATCH user config
-│   │       ├── users/runs/     GET last 7 pipeline runs
+│   │       ├── auth/webhook/       Clerk webhook — creates user rows on signup
+│   │       ├── users/config/       GET + POST + PATCH user config
+│   │       ├── users/runs/         GET last 7 pipeline runs
 │   │       ├── users/test-notion/  Validate Notion credentials
-│   │       └── pipeline/trigger/  Queue a manual pipeline run
+│   │       └── pipeline/trigger/   Queue or retrigger a pipeline run
 │   ├── components/
 │   │   ├── OnboardingForm.tsx  Multi-step onboarding client component
 │   │   ├── DashboardView.tsx   Dashboard client component
 │   │   └── SettingsView.tsx    Settings client component
 │   ├── lib/
 │   │   └── supabase.ts         supabaseAdmin (service role) + createBrowserClient()
-│   ├── middleware.ts            Clerk edge middleware — route protection
+│   ├── proxy.ts                Clerk edge middleware — route protection
 │   └── .env.local.example      Required environment variables for web
 ├── pipeline/                   Python pipeline
 │   ├── config.py               Supabase client + get_active_users()
 │   ├── fetcher.py              Shared arXiv fetch with papers_cache
-│   ├── ranker.py               Per-user GPT-4o-mini scoring
+│   ├── ranker.py               Two-pass GPT-4o-mini scoring + summarizing with cache
 │   ├── notion_client.py        Per-user Notion page delivery
 │   ├── pipeline.py             Orchestrator — runs all active users
 │   └── requirements.txt        Python dependencies
 ├── supabase/
-│   └── schema.sql              Full Postgres schema with RLS policies
+│   └── schema.sql              Full Postgres schema (5 tables) with RLS policies
 ├── .github/
 │   └── workflows/
 │       └── daily_pipeline.yml  Runs pipeline at 05:00 UTC daily
