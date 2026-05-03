@@ -16,6 +16,7 @@ SCORE_MODEL = "gpt-4o-mini"
 SUMMARY_MODEL = "gpt-4o-mini"
 SCORE_BATCH_SIZE = 40
 SUMMARY_BATCH_SIZE = 12
+MAX_SHORTLIST = 40          # max papers sent to the LLM per user per day
 PROMPT_VERSION = 1
 CACHE_TABLE = "paper_rankings_cache"
 CACHE_QUERY_CHUNK_SIZE = 100
@@ -90,6 +91,85 @@ def _profile_hash(user_config: dict) -> str:
 
 def _arxiv_id(paper: dict) -> str:
     return paper["arxiv_id"]
+
+
+# ── shortlist helpers ──────────────────────────────────────────────────────────
+
+_SHORTLIST_STOPWORDS = frozenset({
+    "about", "also", "and", "are", "based", "been", "but", "can",
+    "for", "from", "have", "how", "into", "its", "more", "not",
+    "that", "the", "their", "then", "than", "this", "using", "via",
+    "when", "which", "will", "with", "what",
+})
+
+
+def _topic_keywords(topics: list[str]) -> list[str]:
+    """Extract meaningful words from user topic strings for overlap scoring."""
+    seen: set[str] = set()
+    keywords: list[str] = []
+    for topic in topics:
+        for raw_word in re.split(r"[\s\-/]+", topic.lower()):
+            word = re.sub(r"[^a-z0-9]", "", raw_word)
+            if len(word) > 3 and word not in _SHORTLIST_STOPWORDS and word not in seen:
+                seen.add(word)
+                keywords.append(word)
+    return keywords
+
+
+def _shortlist_papers(papers: list[dict], user_config: dict) -> list[dict]:
+    """Return at most MAX_SHORTLIST papers ranked by topic-overlap score.
+
+    Scoring signals (additive):
+      +3  keyword found in title        — highest signal
+      +2  keyword found in matched_group — strong signal (set by fetcher)
+      +1  keyword found in abstract     — broader signal
+
+    Papers below the cutoff are dropped before any cache query or LLM call.
+    Returns papers unchanged when the list already fits within MAX_SHORTLIST.
+    """
+    if len(papers) <= MAX_SHORTLIST:
+        return papers
+
+    topics = user_config.get("topics") or []
+    if not topics:
+        log.info(
+            "Shortlist: no topics configured — truncating %d → %d (newest first)",
+            len(papers), MAX_SHORTLIST,
+        )
+        return papers[:MAX_SHORTLIST]
+
+    keywords = _topic_keywords(topics)
+    if not keywords:
+        log.info(
+            "Shortlist: no keywords extracted — truncating %d → %d (newest first)",
+            len(papers), MAX_SHORTLIST,
+        )
+        return papers[:MAX_SHORTLIST]
+
+    kw_pattern = re.compile(
+        "|".join(re.escape(kw) for kw in keywords), re.IGNORECASE
+    )
+
+    def _overlap(paper: dict) -> int:
+        score = 0
+        if kw_pattern.search(paper.get("title", "")):
+            score += 3
+        if kw_pattern.search(paper.get("matched_group", "")):
+            score += 2
+        if kw_pattern.search(paper.get("abstract", "")):
+            score += 1
+        return score
+
+    ranked = sorted(papers, key=_overlap, reverse=True)
+    cutoff_score = _overlap(ranked[MAX_SHORTLIST - 1])
+    dropped = ranked[MAX_SHORTLIST:]
+    n_zero_dropped = sum(1 for p in dropped if _overlap(p) == 0)
+
+    log.info(
+        "Shortlist: %d → %d papers | cutoff overlap=%d | %d dropped (%d with zero overlap)",
+        len(papers), MAX_SHORTLIST, cutoff_score, len(dropped), n_zero_dropped,
+    )
+    return ranked[:MAX_SHORTLIST]
 
 
 def _build_score_prompt(papers: list[dict], user_config: dict) -> str:
@@ -373,37 +453,43 @@ def _summarize_batches(
 def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
     """Score *papers* for *user_config* using GPT-4o-mini.
 
-    Uses a two-pass flow:
-    1. score/include only
-    2. summarize only papers that passed the threshold
+    Processing pipeline per user:
+      1. Shortlist  — topic-overlap filter, Python-only, no LLM
+      2. Cache      — load any previous scores+summaries for candidates
+      3. Scoring    — LLM pass 1: score/include only for cache misses
+      4. Summarize  — LLM pass 2: summaries for papers that passed threshold
 
     Results are cached per user, fetch date, and profile hash.
     """
     if not papers:
         return []
 
+    n_total = len(papers)
     user_id = user_config.get("user_id")
     fetch_date = papers[0].get("fetch_date")
     profile_hash = _profile_hash(user_config)
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+    # ── Phase 0: shortlist by topic overlap ───────────────────────────────────
+    candidates = _shortlist_papers(papers, user_config)
 
     scored: list[dict] = []
     cache_rows_to_upsert: list[dict] = []
     papers_to_score: list[dict] = []
     papers_to_summarize: list[dict] = []
 
+    # ── Phase 1: classify candidates against the cache ────────────────────────
     cached_rows = None
     if user_id and fetch_date:
         cached_rows = _load_cached_rankings(
-            user_id, fetch_date, profile_hash, [_arxiv_id(paper) for paper in papers]
+            user_id, fetch_date, profile_hash, [_arxiv_id(p) for p in candidates]
         )
 
-    # ── Phase 0: classify papers against the cache ────────────────────────────
     cache_hits = 0
     cached_rejections = 0
-    cached_complete = 0  # score + complete summary both in cache
+    cached_complete = 0
 
-    for paper in papers:
+    for paper in candidates:
         cached = cached_rows.get(_arxiv_id(paper)) if cached_rows is not None else None
         if not cached or cached.get("score") is None:
             papers_to_score.append(paper)
@@ -423,27 +509,23 @@ def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
         if _has_complete_summary(cached):
             cached_complete += 1
             scored.append(
-                {
-                    **base,
-                    **{field: cached.get(field) for field in SUMMARY_FIELDS},
-                }
+                {**base, **{field: cached.get(field) for field in SUMMARY_FIELDS}}
             )
         else:
             papers_to_summarize.append(base)
 
-    # Cache lookup summary (always emit so cold-run vs warm-run is visible)
     log.info(
-        "Cache lookup  : %d/%d papers hit "
-        "(%d complete hits, %d rejected hits, %d score-only hits, %d misses)",
+        "Cache lookup  : %d/%d candidates hit "
+        "(%d complete, %d rejected, %d score-only, %d misses)",
         cache_hits,
-        len(papers),
+        len(candidates),
         cached_complete,
         cached_rejections,
-        len(papers_to_summarize),   # score cached, summary still needed
-        len(papers_to_score),       # not in cache at all
+        len(papers_to_summarize),
+        len(papers_to_score),
     )
 
-    # ── Phase 1: score papers not in cache ───────────────────────────────────
+    # ── Phase 2: score cache misses ───────────────────────────────────────────
     score_map, n_score_calls = _score_batches(papers_to_score, user_config, client)
 
     newly_passing = 0
@@ -462,20 +544,20 @@ def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
                 _build_cache_row(user_id, fetch_date, profile_hash, paper, base)
             )
 
-    # How many scoring calls would a cold run have needed?
-    baseline_score_calls = math.ceil(len(papers) / SCORE_BATCH_SIZE) if papers else 0
+    # Baseline: how many scoring calls a fully cold run (no shortlist, no cache) would need
+    baseline_score_calls = math.ceil(n_total / SCORE_BATCH_SIZE) if n_total else 0
     score_calls_saved = baseline_score_calls - n_score_calls
 
     log.info(
         "Scoring       : %d LLM call(s) for %d papers "
-        "(%d call(s) saved vs cold run, %d papers passed threshold)",
+        "(%d call(s) saved vs cold baseline, %d newly passed threshold)",
         n_score_calls,
         len(papers_to_score),
         score_calls_saved,
         newly_passing,
     )
 
-    # ── Phase 2: summarize passing papers not fully in cache ─────────────────
+    # ── Phase 3: summarize passing papers not fully in cache ──────────────────
     summaries, n_summary_calls = _summarize_batches(papers_to_summarize, user_config, client)
 
     for paper in papers_to_summarize:
@@ -489,7 +571,7 @@ def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
 
     log.info(
         "Summarization : %d LLM call(s) for %d papers "
-        "(%d summary/summaries served from cache)",
+        "(%d served from cache)",
         n_summary_calls,
         len(papers_to_summarize),
         cached_complete,
@@ -498,20 +580,20 @@ def rank_papers(papers: list[dict], user_config: dict) -> list[dict]:
     if user_id and fetch_date:
         _save_cached_rankings(cache_rows_to_upsert)
 
-    # ── Final summary ─────────────────────────────────────────────────────────
+    # ── Final tally ───────────────────────────────────────────────────────────
     total_llm_calls = n_score_calls + n_summary_calls
-    total_saved = score_calls_saved  # summary savings harder to baseline without full run
-    papers_zero_cost = cached_complete + cached_rejections  # no LLM touched at all
+    papers_zero_cost = cached_complete + cached_rejections
 
     log.info(
-        "Total         : %d LLM call(s) made, ~%d saved by cache "
-        "| %d/%d papers required zero LLM | %d/%d passed and delivered",
+        "Total         : %d LLM call(s) | ~%d call(s) saved by shortlist+cache "
+        "| %d/%d candidates zero-LLM | %d/%d passed (from %d fetched)",
         total_llm_calls,
-        total_saved,
+        score_calls_saved,
         papers_zero_cost,
-        len(papers),
+        len(candidates),
         len(scored),
-        len(papers),
+        len(candidates),
+        n_total,
     )
 
     scored.sort(key=lambda paper: float(paper.get("score", 0)), reverse=True)
