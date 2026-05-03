@@ -2,7 +2,7 @@
 
 ## What this is
 
-arXiv Digest is a multi-tenant SaaS application that delivers a personalised daily summary of arXiv research papers directly to your Notion workspace. Each morning the pipeline scans every paper published in the last 24 hours across ML, NLP, CV, and AI, scores each one against your specific project description and experience level using GPT-4o-mini, and pushes a structured digest — with Problem, Approach, Results, and Builder Takeaway for every paper — into a Notion database you control.
+arXiv Digest is a multi-tenant SaaS application that delivers a personalised daily summary of arXiv research papers directly to your Notion workspace. Each morning the pipeline fetches every paper published in the last 24 hours across ML, NLP, CV, and AI, shortlists the most relevant candidates using keyword overlap against your topics, scores and summarises them with GPT-4o-mini, and pushes a structured digest — with Problem, Approach, Results, Builder Takeaway, and Learning Path for every paper — into a Notion database you control.
 
 The service is built for developers who want to stay current with AI research without drowning in the firehose. You describe what you're building in plain English, set your topics, and the system handles the rest. No arXiv categories, no manual filtering, no reading 40 abstracts before breakfast.
 
@@ -36,7 +36,7 @@ ai-digest-web/
 ├── pipeline/                   Python pipeline
 │   ├── config.py               Supabase client + get_active_users()
 │   ├── fetcher.py              Shared arXiv fetch with papers_cache
-│   ├── ranker.py               Two-pass GPT-4o-mini scoring + summarizing with cache
+│   ├── ranker.py               Four-phase ranker: shortlist → cache → score → summarize
 │   ├── notion_client.py        Per-user Notion page delivery
 │   ├── pipeline.py             Orchestrator — runs all active users
 │   └── requirements.txt        Python dependencies
@@ -97,7 +97,29 @@ pip install -r requirements.txt
 python pipeline.py
 ```
 
-The pipeline reads all active users from Supabase, fetches today's arXiv papers (cached after the first run), scores them per user, and pushes digests to each user's Notion workspace.
+The pipeline reads all active users from Supabase, fetches today's arXiv papers (shared fetch, cached after the first call), then for each user runs the four-phase ranker before pushing the digest to their Notion workspace.
+
+### Pipeline architecture
+
+The ranker processes each user's papers in four phases, designed to minimise LLM calls on both cold and warm runs:
+
+| Phase | What happens | Cost |
+|-------|-------------|------|
+| **1 — Shortlist** | Python keyword overlap between paper title/abstract/group and the user's topics. Keeps the top 40 candidates; discards the rest. | Free |
+| **2 — Cache** | Loads any previous scores and summaries for those 40 candidates from `paper_rankings_cache` (keyed on `user_id + fetch_date + profile_hash + arxiv_id`). | Free |
+| **3 — Score** | Sends only cache-miss candidates to GPT-4o-mini in batches of 40. With shortlisting, a cold run is at most 1 scoring call regardless of how many papers were fetched. Returns score + include flag only. | LLM |
+| **4 — Summarise** | Sends only papers that passed the score threshold (≥ 7.0) to GPT-4o-mini for Problem / Approach / Results / Builder Takeaway / Learning Path. | LLM |
+
+On a same-day rerun the cache covers all candidates and LLM calls drop to zero. The `paper_rankings_cache` table invalidates automatically on profile change because the cache key includes a hash of the user's topics, experience level, and scoring priorities.
+
+Structured log output per user run:
+```
+Shortlist     : 87 → 40 papers | cutoff overlap=1 | 12 dropped (12 with zero overlap)
+Cache lookup  : 40/40 candidates hit (9 complete, 31 rejected, 0 score-only, 0 misses)
+Scoring       : 0 LLM call(s) for 0 papers (3 call(s) saved vs cold baseline, 0 newly passed)
+Summarization : 0 LLM call(s) for 0 papers (9 served from cache)
+Total         : 0 LLM call(s) | ~3 call(s) saved by shortlist+cache | 40/40 candidates zero-LLM | 9/40 passed (from 87 fetched)
+```
 
 ### GitHub Actions secrets
 
