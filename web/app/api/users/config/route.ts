@@ -15,6 +15,39 @@ async function resolveUser(clerkId: string) {
   return data;
 }
 
+async function saveUserConfig(
+  userId: string,
+  values: Record<string, unknown>
+) {
+  const { data: existingConfigs, error: lookupError } = await supabaseAdmin
+    .from("user_configs")
+    .select("id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (lookupError) {
+    return { data: null, error: lookupError };
+  }
+
+  const existingConfigId = existingConfigs?.[0]?.id;
+
+  if (existingConfigId) {
+    return supabaseAdmin
+      .from("user_configs")
+      .update(values)
+      .eq("id", existingConfigId)
+      .select()
+      .single();
+  }
+
+  return supabaseAdmin
+    .from("user_configs")
+    .insert({ user_id: userId, ...values })
+    .select()
+    .single();
+}
+
 // ── GET /api/users/config ─────────────────────────────────────────────────────
 
 export async function GET() {
@@ -70,22 +103,14 @@ export async function POST(req: NextRequest) {
       experienceLevel,
     } = body;
 
-    const { data, error } = await supabaseAdmin
-      .from("user_configs")
-      .upsert(
-        {
-          user_id: user.id,
-          notion_token: notionToken,
-          notion_database_id: notionDatabaseId,
-          notion_connected: true,
-          topics,
-          profile_description: profileDescription,
-          experience_level: experienceLevel,
-        },
-        { onConflict: "user_id" }
-      )
-      .select()
-      .single();
+    const { data, error } = await saveUserConfig(user.id, {
+      notion_token: notionToken,
+      notion_database_id: notionDatabaseId,
+      notion_connected: true,
+      topics,
+      profile_description: profileDescription,
+      experience_level: experienceLevel,
+    });
 
     if (error) {
       console.error("Upsert user_configs error:", error);
@@ -146,12 +171,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("user_configs")
-      .update(updates)
-      .eq("user_id", user.id)
-      .select()
-      .single();
+    const { data, error } = await saveUserConfig(user.id, updates);
 
     if (error) {
       console.error("Update user_configs error:", error);

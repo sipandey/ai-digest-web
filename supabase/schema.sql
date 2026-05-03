@@ -75,7 +75,7 @@ COMMENT ON TABLE user_configs IS
   'Notion OAuth credentials, research topic list, experience level, and '
   'digest scheduling settings for each user. One row per user.';
 
-CREATE INDEX IF NOT EXISTS user_configs_user_id_idx ON user_configs (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS user_configs_user_id_key ON user_configs (user_id);
 
 CREATE TRIGGER user_configs_set_updated_at
   BEFORE UPDATE ON user_configs

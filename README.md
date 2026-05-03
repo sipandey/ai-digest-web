@@ -119,8 +119,28 @@ Notion tokens and database IDs are stored per-user in Supabase and do **not** ne
 3. Add all variables from `web/.env.local.example` in **Project Settings → Environment Variables**
 4. Deploy — Vercel auto-deploys on every push to `main`
 
+For the in-app **Run now** button on Vercel, also set these server-side env vars:
+- `PIPELINE_TRIGGER_MODE=github_actions`
+- `PIPELINE_GITHUB_TOKEN` — GitHub token with permission to dispatch workflows
+- `PIPELINE_GITHUB_REPOSITORY` — `owner/repo`
+- `PIPELINE_GITHUB_WORKFLOW_ID=daily_pipeline.yml`
+- `PIPELINE_GITHUB_REF=main`
+
 **Pipeline — GitHub Actions:**  
 The workflow at `.github/workflows/daily_pipeline.yml` runs automatically at 05:00 UTC every day. Enable Actions on the repository and add the three secrets above. You can also trigger it manually from the **Actions** tab.
+
+### Local Run Now behavior
+
+For local development, you can make the dashboard **Run now** button bypass GitHub Actions and spawn the Python pipeline directly from the Next.js app:
+
+```bash
+# web/.env.local
+PIPELINE_TRIGGER_MODE=direct
+OPENAI_API_KEY=your_openai_key
+PIPELINE_PYTHON_BIN=python3
+```
+
+In direct mode, the route reuses your existing web Supabase env vars and launches `pipeline/pipeline.py` for the current user only, which is useful for debugging onboarding, fetching, ranking, and Notion delivery end to end.
 
 ## Adding your first user (manual beta)
 

@@ -13,7 +13,16 @@ name: Daily Pipeline
 on:
   schedule:
     - cron: "0 5 * * *"   # 05:00 UTC — digest ready before local 7am in all timezones
-  workflow_dispatch:        # manual trigger from the GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: "Optional user_id to process"
+        required: false
+        type: string
+      run_date:
+        description: "Optional run date (YYYY-MM-DD)"
+        required: false
+        type: string
 
 concurrency:
   group: daily-pipeline
@@ -52,4 +61,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PIPELINE_USER_ID: ${{ github.event.inputs.user_id }}
+          PIPELINE_RUN_DATE: ${{ github.event.inputs.run_date }}
         run: python pipeline.py

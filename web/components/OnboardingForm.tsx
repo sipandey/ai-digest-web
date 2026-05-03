@@ -1,5 +1,6 @@
 "use client";
 
+import { useClerk } from "@clerk/nextjs";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -40,6 +41,7 @@ const SUGGESTED_TOPICS = [
 
 export default function OnboardingForm() {
   const router = useRouter();
+  const { signOut } = useClerk();
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormData>({
@@ -59,6 +61,7 @@ export default function OnboardingForm() {
     useState<ConnectionStatus>("idle");
   const [connectionError, setConnectionError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // ── validation ──────────────────────────────────────────────────────────────
   const step1Valid = form.profileDescription.trim().length >= 50;
@@ -133,12 +136,30 @@ export default function OnboardingForm() {
     }
   }
 
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut({ redirectUrl: "/" });
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
   // ── render ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-start py-12 px-4">
       {/* Progress */}
       <div className="w-full max-w-lg mb-8">
-        <p className="text-sm font-semibold text-indigo-600 mb-3">arXiv Digest</p>
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <p className="text-sm font-semibold text-indigo-600">arXiv Digest</p>
+          <button
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
         <div className="flex items-center gap-1.5">
           {[1, 2, 3].map((s) => (
             <div

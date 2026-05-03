@@ -1,5 +1,6 @@
 """Main orchestrator. Usage: python pipeline/pipeline.py"""
 import logging
+import os
 import sys
 from datetime import date, datetime, timezone
 
@@ -46,7 +47,8 @@ def _upsert_run(user_id: str, run_date: str, **fields) -> str:
 
 
 def main() -> None:
-    run_date = date.today().isoformat()
+    run_date = os.environ.get("PIPELINE_RUN_DATE", date.today().isoformat())
+    target_user_id = os.environ.get("PIPELINE_USER_ID")
     log.info("=== Pipeline starting for %s ===", run_date)
 
     # ── Shared fetch (runs once, cached for the day) ──────────────────────────
@@ -54,7 +56,9 @@ def main() -> None:
     log.info("Fetched %d papers for %s", len(papers), run_date)
 
     # ── Load active users ─────────────────────────────────────────────────────
-    users = get_active_users()
+    users = get_active_users(target_user_id)
+    if target_user_id:
+        log.info("Single-user mode enabled for user_id=%s", target_user_id)
     log.info("Processing %d active user(s)", len(users))
 
     if not users:

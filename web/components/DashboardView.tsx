@@ -218,6 +218,15 @@ function TodayCard({
   onTrigger: () => void;
 }) {
   const status = run?.status ?? "none";
+  const runNowButton = (
+    <button
+      onClick={onTrigger}
+      disabled={triggering}
+      className="border border-indigo-600 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 text-sm font-medium px-5 py-2 rounded-lg"
+    >
+      {triggering ? "Running…" : "Run now"}
+    </button>
+  );
 
   const variants: Record<
     string,
@@ -232,16 +241,21 @@ function TodayCard({
           {run?.top_score ?? "—"}/10
         </p>
       ),
-      action: run?.notion_page_url ? (
-        <a
-          href={run.notion_page_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block mt-4 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-5 py-2 rounded-lg"
-        >
-          View in Notion
-        </a>
-      ) : null,
+      action: (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {run?.notion_page_url ? (
+            <a
+              href={run.notion_page_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-5 py-2 rounded-lg"
+            >
+              View in Notion
+            </a>
+          ) : null}
+          {runNowButton}
+        </div>
+      ),
     },
     running: {
       dot: "bg-amber-400",
@@ -256,15 +270,7 @@ function TodayCard({
           Scheduled for {padDigestHour(digestHour)} your time.
         </p>
       ),
-      action: (
-        <button
-          onClick={onTrigger}
-          disabled={triggering}
-          className="mt-4 border border-indigo-600 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 text-sm font-medium px-5 py-2 rounded-lg"
-        >
-          {triggering ? "Running…" : "Run now"}
-        </button>
-      ),
+      action: <div className="mt-4">{runNowButton}</div>,
     },
     none: {
       dot: "bg-gray-400",
@@ -274,27 +280,22 @@ function TodayCard({
           Scheduled for {padDigestHour(digestHour)} your time.
         </p>
       ),
-      action: (
-        <button
-          onClick={onTrigger}
-          disabled={triggering}
-          className="mt-4 border border-indigo-600 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 text-sm font-medium px-5 py-2 rounded-lg"
-        >
-          {triggering ? "Running…" : "Run now"}
-        </button>
-      ),
+      action: <div className="mt-4">{runNowButton}</div>,
     },
     empty: {
       dot: "bg-blue-400",
       heading: "No papers matched today",
       body: (
-        <p className="text-sm text-gray-500">
-          Try broadening your topics in{" "}
-          <Link href="/settings" className="text-indigo-600 hover:underline">
-            Settings
-          </Link>
-          .
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">
+            Try broadening your topics in{" "}
+            <Link href="/settings" className="text-indigo-600 hover:underline">
+              Settings
+            </Link>
+            .
+          </p>
+          {runNowButton}
+        </div>
       ),
     },
     failed: {
@@ -305,6 +306,7 @@ function TodayCard({
           <p className="text-sm text-gray-500">
             We&apos;ll retry automatically tomorrow.
           </p>
+          <div className="mt-3">{runNowButton}</div>
           {run?.error_message && (
             <p className="mt-2 text-xs text-red-500 font-mono bg-red-50 rounded px-3 py-2">
               {run.error_message}
