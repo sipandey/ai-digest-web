@@ -2,15 +2,41 @@ import { SignIn } from "@clerk/nextjs";
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
+    <div className="min-h-screen bg-[#f4f4f8] flex flex-col items-center justify-center px-4 py-12">
+      {/* Brand */}
+      <div className="mb-8 text-center">
+        <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-3">
+          AI Digest
+        </p>
+        <h1 className="text-2xl font-bold text-[#14141e]">Welcome back</h1>
+        <p className="mt-2 text-sm text-gray-500">
+          Sign in to see today&apos;s digest
+        </p>
       </div>
+
       <SignIn
         path="/login"
         routing="path"
         signUpUrl="/signup"
         forceRedirectUrl={process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL}
+        appearance={{
+          variables: {
+            colorBackground: "#ffffff",
+            colorInputBackground: "#f4f4f8",
+            colorInputText: "#14141e",
+            colorText: "#14141e",
+            colorTextSecondary: "#6a6a85",
+            colorPrimary: "#6366f1",
+            colorNeutral: "#14141e",
+            borderRadius: "12px",
+          },
+          elements: {
+            card: "shadow-none border border-gray-200 bg-white",
+            formFieldInput: "bg-[#f4f4f8] border-gray-200 text-[#14141e] placeholder:text-gray-300",
+            formButtonPrimary: "bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl",
+            footerActionLink: "text-indigo-600 hover:text-indigo-500",
+          },
+        }}
       />
     </div>
   );

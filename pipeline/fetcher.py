@@ -6,99 +6,21 @@ from typing import Optional
 import arxiv
 
 from config import supabase
+from pipeline_config import (
+    ARXIV_CATEGORIES,
+    MAX_RESULTS_PER_CATEGORY,
+    MAX_AUTHORS_DISPLAYED,
+    ARXIV_CLIENT_PAGE_SIZE,
+    ARXIV_CLIENT_DELAY_SECONDS,
+    ARXIV_CLIENT_NUM_RETRIES,
+    WEEKDAY_WINDOW_DAYS,
+    WEEKEND_WINDOW_DAYS,
+    KEYWORD_GROUPS,
+)
 
 log = logging.getLogger(__name__)
 
-# Fetch broadly from the primary AI categories, then classify locally using
-# title + abstract matching. This is more reliable than requiring exact arXiv
-# abstract phrases in the query itself.
-ARXIV_CATEGORIES = ["cs.LG", "cs.CL", "cs.IR", "cs.AI", "cs.CV"]
-MAX_RESULTS_PER_CATEGORY = 150
-
-KEYWORD_GROUPS: list[tuple[str, list[str]]] = [
-    (
-        "RAG and retrieval",
-        [
-            "rag",
-            "retrieval augmented",
-            "retrieval-augmented",
-            "dense retrieval",
-            "vector database",
-            "semantic search",
-            "knowledge retrieval",
-            "embedding",
-            "similarity search",
-            "question answering",
-            "document understanding",
-        ],
-    ),
-    (
-        "AI agents and automation",
-        [
-            "ai agent",
-            "agentic",
-            "autonomous agent",
-            "multi-agent",
-            "agent framework",
-            "tool use",
-            "tool calling",
-            "function calling",
-            "workflow automation",
-            "task planning",
-            "code assistant",
-        ],
-    ),
-    (
-        "LLM applications and fine-tuning",
-        [
-            "large language model",
-            "llm",
-            "instruction tuning",
-            "rlhf",
-            "fine-tuning",
-            "prompt engineering",
-            "prompt tuning",
-            "in-context learning",
-            "few-shot",
-            "chain of thought",
-            "structured output",
-            "hallucination",
-            "grounding",
-            "context window",
-        ],
-    ),
-    (
-        "Multimodal AI",
-        [
-            "multimodal",
-            "vision language",
-            "vision-language",
-            "image text",
-            "visual question answering",
-            "text to image",
-            "video understanding",
-            "video language",
-            "audio",
-            "speech recognition",
-            "document ai",
-        ],
-    ),
-    (
-        "AI safety and alignment",
-        [
-            "ai safety",
-            "alignment",
-            "jailbreak",
-            "red teaming",
-            "constitutional ai",
-            "truthfulness",
-            "interpretability",
-            "explainability",
-            "robustness",
-        ],
-    ),
-]
-
+# Build compiled regex patterns once at import time (not on every fetch call).
 GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
     (
         name,
@@ -121,10 +43,14 @@ def _matched_group(result: arxiv.Result) -> Optional[str]:
 
 
 def _window_days(run_day: date) -> int:
-    """Use a wider publication-date window on weekends and Sunday/Monday runs."""
-    if run_day.weekday() in (6, 0):  # Sunday, Monday
-        return 2
-    return 1
+    """Use a wider publication-date window on Sunday and Monday runs.
+
+    Weekend submissions accumulate over Saturday–Sunday and aren't processed
+    until Monday morning; a 2-day window captures them.
+    """
+    if run_day.weekday() in (6, 0):  # Sunday=6, Monday=0
+        return WEEKEND_WINDOW_DAYS
+    return WEEKDAY_WINDOW_DAYS
 
 
 def fetch_papers(run_date: str) -> list[dict]:
@@ -153,7 +79,12 @@ def fetch_papers(run_date: str) -> list[dict]:
         run_date,
         run_day.strftime("%A"),
     )
-    client = arxiv.Client(page_size=100, delay_seconds=3.0, num_retries=3)
+
+    client = arxiv.Client(
+        page_size=ARXIV_CLIENT_PAGE_SIZE,
+        delay_seconds=ARXIV_CLIENT_DELAY_SECONDS,
+        num_retries=ARXIV_CLIENT_NUM_RETRIES,
+    )
 
     papers: list[dict] = []
     seen_ids: set[str] = set()
@@ -205,7 +136,9 @@ def fetch_papers(run_date: str) -> list[dict]:
                     "arxiv_id": arxiv_id,
                     "fetch_date": run_date,
                     "title": result.title,
-                    "authors": ", ".join(a.name for a in result.authors[:5]),
+                    "authors": ", ".join(
+                        a.name for a in result.authors[:MAX_AUTHORS_DISPLAYED]
+                    ),
                     "abstract": result.summary.replace("\n", " "),
                     "pdf_url": result.pdf_url,
                     "published_date": result.published.date().isoformat(),

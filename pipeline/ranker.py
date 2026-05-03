@@ -11,19 +11,46 @@ from typing import Optional
 from openai import OpenAI
 
 from config import supabase
+from pipeline_config import (
+    # models
+    SCORE_MODEL,
+    SUMMARY_MODEL,
+    SCORE_TEMPERATURE,
+    SUMMARY_TEMPERATURE,
+    # batching
+    SCORE_BATCH_SIZE,
+    SUMMARY_BATCH_SIZE,
+    MAX_SHORTLIST,
+    SCORE_THRESHOLD,
+    SCORE_ABSTRACT_MAX_CHARS,
+    # batch API
+    BATCH_POLL_INTERVAL,
+    BATCH_TIMEOUT,
+    # cache
+    CACHE_TABLE,
+    CACHE_QUERY_CHUNK_SIZE,
+    PROMPT_VERSION,
+    # shortlist
+    SHORTLIST_TITLE_WEIGHT,
+    SHORTLIST_GROUP_WEIGHT,
+    SHORTLIST_ABSTRACT_WEIGHT,
+    SHORTLIST_STOPWORDS,
+    SHORTLIST_MIN_KEYWORD_LENGTH,
+    # rubric
+    SCORING_CRITERIA,
+    DEFAULT_ACTIVE_CRITERIA,
+    LEVEL_DESCRIPTIONS,
+    # summary limits
+    SUMMARY_FIELD_WORD_LIMITS,
+    # prompts
+    SCORE_SYSTEM_MESSAGE,
+    SCORE_PROMPT_TEMPLATE,
+    SUMMARY_SYSTEM_MESSAGE,
+    SUMMARY_PROMPT_TEMPLATE,
+)
 
 log = logging.getLogger(__name__)
 
-SCORE_MODEL = "gpt-4o-mini"
-SUMMARY_MODEL = "gpt-4o-mini"
-SCORE_BATCH_SIZE = 40
-SUMMARY_BATCH_SIZE = 12
-MAX_SHORTLIST = 40          # max papers sent to the LLM per user per day
-PROMPT_VERSION = 1
-BATCH_POLL_INTERVAL = 30    # seconds between batch status checks
-BATCH_TIMEOUT = 7200        # 2-hour ceiling — well within the 24h batch window
-CACHE_TABLE = "paper_rankings_cache"
-CACHE_QUERY_CHUNK_SIZE = 100
 SUMMARY_FIELDS = (
     "problem",
     "approach",
@@ -32,12 +59,8 @@ SUMMARY_FIELDS = (
     "learning_path",
 )
 
-LEVEL_DESCRIPTIONS: dict[str, str] = {
-    "beginner": "a complete beginner just starting with AI",
-    "developer_learning_ai": "a developer who can code well but is learning ML concepts",
-    "practitioner": "a practitioner already building AI systems regularly",
-    "ml_engineer": "an ML engineer who trains models and does deep ML work",
-}
+
+# ── utilities ──────────────────────────────────────────────────────────────────
 
 
 def _chunked(items: list, size: int):
@@ -58,22 +81,14 @@ def _truncate_words(text: str, max_words: int) -> str:
 
 def _active_criteria(user_config: dict) -> list[str]:
     priorities = user_config.get("scoring_priorities") or {}
-    active_criteria = [key for key, enabled in priorities.items() if enabled]
-    if not active_criteria:
-        active_criteria = [
-            "builder_relevance",
-            "understandability",
-            "real_world_grounding",
-            "novelty_timing",
-        ]
-    return active_criteria
+    active = [key for key, enabled in priorities.items() if enabled]
+    return active if active else list(DEFAULT_ACTIVE_CRITERIA)
 
 
 def _user_context(user_config: dict) -> tuple[str, str, str]:
     profile = (user_config.get("profile_description") or "").strip()
     level = user_config.get("experience_level", "developer_learning_ai")
     topics = user_config.get("topics") or []
-
     level_desc = LEVEL_DESCRIPTIONS.get(level, level)
     topics_str = ", ".join(topics) if topics else "general AI/ML"
     return profile, level_desc, topics_str
@@ -99,14 +114,7 @@ def _arxiv_id(paper: dict) -> str:
     return paper["arxiv_id"]
 
 
-# ── shortlist helpers ──────────────────────────────────────────────────────────
-
-_SHORTLIST_STOPWORDS = frozenset({
-    "about", "also", "and", "are", "based", "been", "but", "can",
-    "for", "from", "have", "how", "into", "its", "more", "not",
-    "that", "the", "their", "then", "than", "this", "using", "via",
-    "when", "which", "will", "with", "what",
-})
+# ── shortlist ──────────────────────────────────────────────────────────────────
 
 
 def _topic_keywords(topics: list[str]) -> list[str]:
@@ -116,7 +124,11 @@ def _topic_keywords(topics: list[str]) -> list[str]:
     for topic in topics:
         for raw_word in re.split(r"[\s\-/]+", topic.lower()):
             word = re.sub(r"[^a-z0-9]", "", raw_word)
-            if len(word) > 3 and word not in _SHORTLIST_STOPWORDS and word not in seen:
+            if (
+                len(word) > SHORTLIST_MIN_KEYWORD_LENGTH
+                and word not in SHORTLIST_STOPWORDS
+                and word not in seen
+            ):
                 seen.add(word)
                 keywords.append(word)
     return keywords
@@ -125,10 +137,10 @@ def _topic_keywords(topics: list[str]) -> list[str]:
 def _shortlist_papers(papers: list[dict], user_config: dict) -> list[dict]:
     """Return at most MAX_SHORTLIST papers ranked by topic-overlap score.
 
-    Scoring signals (additive):
-      +3  keyword found in title        — highest signal
-      +2  keyword found in matched_group — strong signal (set by fetcher)
-      +1  keyword found in abstract     — broader signal
+    Scoring signals (additive, weights from pipeline_config):
+      SHORTLIST_TITLE_WEIGHT    — keyword found in title
+      SHORTLIST_GROUP_WEIGHT    — keyword found in matched_group
+      SHORTLIST_ABSTRACT_WEIGHT — keyword found in abstract
 
     Papers below the cutoff are dropped before any cache query or LLM call.
     Returns papers unchanged when the list already fits within MAX_SHORTLIST.
@@ -159,11 +171,11 @@ def _shortlist_papers(papers: list[dict], user_config: dict) -> list[dict]:
     def _overlap(paper: dict) -> int:
         score = 0
         if kw_pattern.search(paper.get("title", "")):
-            score += 3
+            score += SHORTLIST_TITLE_WEIGHT
         if kw_pattern.search(paper.get("matched_group", "")):
-            score += 2
+            score += SHORTLIST_GROUP_WEIGHT
         if kw_pattern.search(paper.get("abstract", "")):
-            score += 1
+            score += SHORTLIST_ABSTRACT_WEIGHT
         return score
 
     ranked = sorted(papers, key=_overlap, reverse=True)
@@ -178,58 +190,27 @@ def _shortlist_papers(papers: list[dict], user_config: dict) -> list[dict]:
     return ranked[:MAX_SHORTLIST]
 
 
-def _build_score_prompt(papers: list[dict], user_config: dict) -> str:
-    profile, level_desc, topics_str = _user_context(user_config)
-    active_criteria = _active_criteria(user_config)
+# ── prompt builders ────────────────────────────────────────────────────────────
 
-    papers_text = ""
+
+def _format_papers_for_scoring(papers: list[dict]) -> str:
+    lines = ""
     for i, paper in enumerate(papers, 1):
-        papers_text += (
+        lines += (
             f"\nPaper {i}:\n"
             f"ID: {_arxiv_id(paper)}\n"
             f"Title: {paper['title']}\n"
-            f"Abstract: {_clean_text(paper.get('abstract') or '', 400)}\n"
+            f"Abstract: {_clean_text(paper.get('abstract') or '', SCORE_ABSTRACT_MAX_CHARS)}\n"
             f"Category: {paper.get('category', '')}\n"
             f"Group: {paper.get('matched_group', '')}\n"
         )
-
-    return f"""You are scoring arXiv papers for a specific user. Be concise and accurate.
-
-USER PROFILE:
-{profile}
-
-Experience level: {level_desc}
-Topics of interest: {topics_str}
-
-SCORING RUBRIC — score each criterion 1–10:
-- builder_relevance: How directly useful is this for someone building or learning about {topics_str}?
-- understandability: How accessible is this paper for {level_desc}?
-- real_world_grounding: Does it include practical results, benchmarks, or released code?
-- novelty_timing: Is this a meaningful advance worth reading about right now?
-
-Compute OVERALL SCORE as the average of the active criteria: {", ".join(active_criteria)}.
-A paper is included in the digest if overall score >= 7.0.
-
-For EACH paper provide:
-- arxiv_id (copy from input)
-- score (float, 1 decimal place)
-- include (true if score >= 7.0, else false)
-
-Do not provide explanations or extra fields.
-
-PAPERS:
-{papers_text}
-
-Respond with ONLY valid JSON in this exact shape:
-{{"papers": [{{"arxiv_id": "...", "score": 0.0, "include": true}}]}}"""
+    return lines
 
 
-def _build_summary_prompt(papers: list[dict], user_config: dict) -> str:
-    profile, level_desc, topics_str = _user_context(user_config)
-
-    papers_text = ""
+def _format_papers_for_summary(papers: list[dict]) -> str:
+    lines = ""
     for i, paper in enumerate(papers, 1):
-        papers_text += (
+        lines += (
             f"\nPaper {i}:\n"
             f"ID: {_arxiv_id(paper)}\n"
             f"Title: {paper['title']}\n"
@@ -238,28 +219,48 @@ def _build_summary_prompt(papers: list[dict], user_config: dict) -> str:
             f"Group: {paper.get('matched_group', '')}\n"
             f"Score: {paper.get('score', '')}\n"
         )
+    return lines
 
-    return f"""You are preparing concise digest fields for papers already selected for a specific user.
 
-USER PROFILE:
-{profile}
+def _build_score_prompt(papers: list[dict], user_config: dict) -> str:
+    profile, level_desc, topics_str = _user_context(user_config)
+    active = _active_criteria(user_config)
 
-Experience level: {level_desc}
-Topics of interest: {topics_str}
+    rubric_lines = "\n".join(
+        f"- {key}: {SCORING_CRITERIA[key].format(topics=topics_str, level_desc=level_desc)}"
+        for key in active
+        if key in SCORING_CRITERIA
+    )
 
-For EACH paper provide:
-- arxiv_id (copy from input)
-- problem (<=15 words: what specific problem does it address?)
-- approach (<=15 words: how does it solve it?)
-- results (<=15 words: key result or benchmark number)
-- builder_takeaway (<=20 words: one concrete thing this user can DO with this paper)
-- learning_path (<=15 words: what should this user understand before reading it?)
+    return SCORE_PROMPT_TEMPLATE.format(
+        profile=profile,
+        level_desc=level_desc,
+        topics_str=topics_str,
+        rubric_lines=rubric_lines,
+        active_criteria_str=", ".join(active),
+        score_threshold=SCORE_THRESHOLD,
+        papers_text=_format_papers_for_scoring(papers),
+    )
 
-PAPERS:
-{papers_text}
 
-Respond with ONLY valid JSON in this exact shape:
-{{"papers": [{{"arxiv_id": "...", "problem": "...", "approach": "...", "results": "...", "builder_takeaway": "...", "learning_path": "..."}}]}}"""
+def _build_summary_prompt(papers: list[dict], user_config: dict) -> str:
+    profile, level_desc, topics_str = _user_context(user_config)
+    lim = SUMMARY_FIELD_WORD_LIMITS
+
+    return SUMMARY_PROMPT_TEMPLATE.format(
+        profile=profile,
+        level_desc=level_desc,
+        topics_str=topics_str,
+        problem_words=lim["problem"],
+        approach_words=lim["approach"],
+        results_words=lim["results"],
+        builder_takeaway_words=lim["builder_takeaway"],
+        learning_path_words=lim["learning_path"],
+        papers_text=_format_papers_for_summary(papers),
+    )
+
+
+# ── cache helpers ──────────────────────────────────────────────────────────────
 
 
 def _has_complete_summary(row: dict) -> bool:
@@ -275,21 +276,21 @@ def _coerce_score(value: object) -> float:
 
 def _fallback_summary(paper: dict) -> dict:
     group = paper.get("matched_group", "AI/ML")
+    lim = SUMMARY_FIELD_WORD_LIMITS
     return {
-        "problem": _truncate_words(paper.get("title", "Paper summary"), 15)
-        or "Paper summary",
-        "approach": _truncate_words(paper.get("abstract", "See abstract"), 15)
-        or "See abstract",
+        "problem": _truncate_words(paper.get("title", "Paper summary"), lim["problem"])
+            or "Paper summary",
+        "approach": _truncate_words(paper.get("abstract", "See abstract"), lim["approach"])
+            or "See abstract",
         "results": "See paper for results",
         "builder_takeaway": _truncate_words(
             f"Review this {group} paper for practical implementation ideas.",
-            20,
-        )
-        or "Review for implementation ideas",
+            lim["builder_takeaway"],
+        ) or "Review for implementation ideas",
         "learning_path": _truncate_words(
-            f"Start with {group} fundamentals before reading in depth.", 15
-        )
-        or "Read topic fundamentals first",
+            f"Start with {group} fundamentals before reading in depth.",
+            lim["learning_path"],
+        ) or "Read topic fundamentals first",
     }
 
 
@@ -345,7 +346,6 @@ def _load_cached_rankings(
 def _save_cached_rankings(rows: list[dict]) -> None:
     if not rows:
         return
-
     try:
         (
             supabase.table(CACHE_TABLE)
@@ -359,7 +359,8 @@ def _save_cached_rankings(rows: list[dict]) -> None:
         log.warning("Ranking cache write unavailable, continuing without cache: %s", exc)
 
 
-# ── Batch API helpers ──────────────────────────────────────────────────────────
+# ── Batch API ──────────────────────────────────────────────────────────────────
+
 
 def _submit_and_poll_batch(
     client: OpenAI,
@@ -442,12 +443,12 @@ def _submit_and_poll_batch(
 def _score_batches_batch_api(
     papers: list[dict], user_config: dict, client: OpenAI, label: str
 ) -> tuple[dict[str, dict], int]:
-    """Batch-API variant of scoring. Returns (score_map, n_requests_submitted)."""
+    """Batch-API scoring. Returns (score_map, n_requests_submitted)."""
     if not papers:
         return {}, 0
 
     requests: list[dict] = []
-    batch_map: dict[str, list[dict]] = {}  # custom_id → papers in that sub-batch
+    batch_map: dict[str, list[dict]] = {}
 
     for i, start in enumerate(range(0, len(papers), SCORE_BATCH_SIZE)):
         batch = papers[start : start + SCORE_BATCH_SIZE]
@@ -460,14 +461,11 @@ def _score_batches_batch_api(
             "body": {
                 "model": SCORE_MODEL,
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a research paper scoring assistant. Respond only with valid JSON.",
-                    },
+                    {"role": "system", "content": SCORE_SYSTEM_MESSAGE},
                     {"role": "user", "content": _build_score_prompt(batch, user_config)},
                 ],
                 "response_format": {"type": "json_object"},
-                "temperature": 0,
+                "temperature": SCORE_TEMPERATURE,
             },
         })
 
@@ -494,7 +492,7 @@ def _score_batches_batch_api(
 def _summarize_batches_batch_api(
     papers: list[dict], user_config: dict, client: OpenAI, label: str
 ) -> tuple[dict[str, dict], int]:
-    """Batch-API variant of summarisation. Returns (summary_map, n_requests_submitted)."""
+    """Batch-API summarisation. Returns (summary_map, n_requests_submitted)."""
     if not papers:
         return {}, 0
 
@@ -512,14 +510,11 @@ def _summarize_batches_batch_api(
             "body": {
                 "model": SUMMARY_MODEL,
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": "You prepare concise paper summaries. Respond only with valid JSON.",
-                    },
+                    {"role": "system", "content": SUMMARY_SYSTEM_MESSAGE},
                     {"role": "user", "content": _build_summary_prompt(batch, user_config)},
                 ],
                 "response_format": {"type": "json_object"},
-                "temperature": 0.2,
+                "temperature": SUMMARY_TEMPERATURE,
             },
         })
 
@@ -549,7 +544,7 @@ def _summarize_batches_batch_api(
 def _score_batches(
     papers: list[dict], user_config: dict, client: OpenAI
 ) -> tuple[dict[str, dict], int]:
-    """Return (score_map, llm_call_count)."""
+    """Synchronous scoring. Returns (score_map, llm_call_count)."""
     scored: dict[str, dict] = {}
     call_count = 0
 
@@ -559,21 +554,16 @@ def _score_batches(
             "Scoring batch %d–%d (%d papers)", batch_start + 1, batch_start + len(batch), len(batch)
         )
         call_count += 1
-
         try:
             response = client.chat.completions.create(
                 model=SCORE_MODEL,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a research paper scoring assistant. Respond only with valid JSON.",
-                    },
+                    {"role": "system", "content": SCORE_SYSTEM_MESSAGE},
                     {"role": "user", "content": _build_score_prompt(batch, user_config)},
                 ],
                 response_format={"type": "json_object"},
-                temperature=0,
+                temperature=SCORE_TEMPERATURE,
             )
-
             result = json.loads(response.choices[0].message.content or "{}")
             for ranked in result.get("papers", []):
                 scored[ranked["arxiv_id"]] = {
@@ -583,9 +573,7 @@ def _score_batches(
         except Exception as exc:
             log.error(
                 "OpenAI scoring failed for batch starting at %d: %s",
-                batch_start,
-                exc,
-                exc_info=True,
+                batch_start, exc, exc_info=True,
             )
             for paper in batch:
                 scored[_arxiv_id(paper)] = {"score": 0.0, "include": False}
@@ -596,7 +584,7 @@ def _score_batches(
 def _summarize_batches(
     papers: list[dict], user_config: dict, client: OpenAI
 ) -> tuple[dict[str, dict], int]:
-    """Return (summary_map, llm_call_count)."""
+    """Synchronous summarisation. Returns (summary_map, llm_call_count)."""
     summaries: dict[str, dict] = {}
     call_count = 0
 
@@ -606,21 +594,16 @@ def _summarize_batches(
             "Summarizing batch %d–%d (%d papers)", batch_start + 1, batch_start + len(batch), len(batch)
         )
         call_count += 1
-
         try:
             response = client.chat.completions.create(
                 model=SUMMARY_MODEL,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You prepare concise paper summaries. Respond only with valid JSON.",
-                    },
+                    {"role": "system", "content": SUMMARY_SYSTEM_MESSAGE},
                     {"role": "user", "content": _build_summary_prompt(batch, user_config)},
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.2,
+                temperature=SUMMARY_TEMPERATURE,
             )
-
             result = json.loads(response.choices[0].message.content or "{}")
             for summary in result.get("papers", []):
                 summaries[summary["arxiv_id"]] = {
@@ -633,14 +616,15 @@ def _summarize_batches(
         except Exception as exc:
             log.error(
                 "OpenAI summarization failed for batch starting at %d: %s",
-                batch_start,
-                exc,
-                exc_info=True,
+                batch_start, exc, exc_info=True,
             )
             for paper in batch:
                 summaries[_arxiv_id(paper)] = _fallback_summary(paper)
 
     return summaries, call_count
+
+
+# ── public entry point ─────────────────────────────────────────────────────────
 
 
 def rank_papers(
@@ -751,7 +735,6 @@ def rank_papers(
                 _build_cache_row(user_id, fetch_date, profile_hash, paper, base)
             )
 
-    # Baseline: how many scoring calls a fully cold run (no shortlist, no cache) would need
     baseline_score_calls = math.ceil(n_total / SCORE_BATCH_SIZE) if n_total else 0
     score_calls_saved = baseline_score_calls - n_score_calls
 

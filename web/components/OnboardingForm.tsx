@@ -20,17 +20,27 @@ type FormData = {
 
 type ConnectionStatus = "idle" | "testing" | "success" | "error";
 
-const EXPERIENCE_LEVELS: { value: ExperienceLevel; label: string }[] = [
-  { value: "beginner", label: "Complete beginner — just starting with AI" },
+const EXPERIENCE_LEVELS: { value: ExperienceLevel; label: string; sub: string }[] = [
+  {
+    value: "beginner",
+    label: "Complete beginner",
+    sub: "Just starting with AI",
+  },
   {
     value: "developer_learning_ai",
-    label: "Developer learning AI — know how to code, learning ML concepts",
+    label: "Developer learning AI",
+    sub: "Know how to code, learning ML concepts",
   },
   {
     value: "practitioner",
-    label: "Practitioner — building AI systems regularly",
+    label: "Practitioner",
+    sub: "Building AI systems regularly",
   },
-  { value: "ml_engineer", label: "ML Engineer — training models, deep ML work" },
+  {
+    value: "ml_engineer",
+    label: "ML Engineer",
+    sub: "Training models, deep ML work",
+  },
 ];
 
 const SUGGESTED_TOPICS = [
@@ -52,11 +62,9 @@ export default function OnboardingForm() {
     notionDatabaseId: "",
   });
 
-  // Step 2
   const [topicInput, setTopicInput] = useState("");
   const [topicError, setTopicError] = useState("");
 
-  // Step 3
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
   const [connectionError, setConnectionError] = useState("");
@@ -73,11 +81,11 @@ export default function OnboardingForm() {
     const topic = raw.trim();
     if (!topic) return;
     if (form.topics.includes(topic)) {
-      setTopicError("Topic already added.");
+      setTopicError("Already added.");
       return;
     }
     if (form.topics.length >= 5) {
-      setTopicError("Maximum 5 topics allowed.");
+      setTopicError("Maximum 5 topics.");
       return;
     }
     setForm((f) => ({ ...f, topics: [...f.topics, topic] }));
@@ -147,77 +155,101 @@ export default function OnboardingForm() {
 
   // ── render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-start py-12 px-4">
-      {/* Progress */}
-      <div className="w-full max-w-lg mb-8">
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <p className="text-sm font-semibold text-indigo-600">AI Digest</p>
+    <div className="min-h-screen bg-[#f4f4f8] flex flex-col items-center justify-start py-10 px-4">
+
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <div className="w-full max-w-[480px] mb-8">
+        <div className="flex items-center justify-between mb-5">
+          <span className="text-sm font-bold text-[#14141e]">AI Digest</span>
           <button
             onClick={handleSignOut}
             disabled={signingOut}
-            className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+            className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-40 transition-colors"
           >
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
         </div>
-        <div className="flex items-center gap-1.5">
+
+        {/* Progress bar */}
+        <div className="flex gap-1.5 mb-3">
           {[1, 2, 3].map((s) => (
             <div
               key={s}
-              className={`h-1.5 flex-1 rounded-full ${
-                s <= step ? "bg-indigo-600" : "bg-gray-200"
+              className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                s <= step ? "bg-indigo-500" : "bg-gray-200"
               }`}
             />
           ))}
         </div>
-        <p className="text-xs text-gray-400 mt-2">Step {step} of 3</p>
+        <p className="text-xs text-gray-400">Step {step} of 3</p>
       </div>
 
-      <div className="w-full max-w-lg bg-white rounded-xl border border-gray-200 p-8">
-        {/* ── STEP 1 ─────────────────────────────────────────────────────────── */}
+      {/* ── Card ──────────────────────────────────────────────────────────── */}
+      <div className="w-full max-w-[480px] bg-white border border-gray-200 rounded-2xl p-7">
+
+        {/* ── STEP 1 ──────────────────────────────────────────────────────── */}
         {step === 1 && (
           <>
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">
+            <h1 className="text-xl font-bold text-[#14141e] mb-1">
               What are you working on?
             </h1>
+            <p className="text-sm text-gray-500 mb-7">
+              This shapes how we score papers for you.
+            </p>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Describe what you&apos;re building or learning
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Your project
               </label>
               <textarea
-                rows={5}
+                rows={4}
                 value={form.profileDescription}
                 onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    profileDescription: e.target.value,
-                  }))
+                  setForm((f) => ({ ...f, profileDescription: e.target.value }))
                 }
                 placeholder="e.g. I'm building a customer support chatbot using RAG. I have web development experience and I'm learning AI. I want papers I can build from immediately."
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none resize-none transition-colors"
               />
               <p
-                className={`text-xs mt-1 ${
+                className={`text-xs mt-2 transition-colors ${
                   form.profileDescription.trim().length >= 50
-                    ? "text-green-600"
-                    : "text-gray-400"
+                    ? "text-emerald-600"
+                    : "text-gray-300"
                 }`}
               >
-                {form.profileDescription.trim().length} / 50 characters minimum
+                {form.profileDescription.trim().length} / 50 minimum
               </p>
             </div>
 
             <div className="mb-8">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Your AI experience level
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                Your AI experience
               </label>
-              <div className="space-y-3">
-                {EXPERIENCE_LEVELS.map(({ value, label }) => (
+              <div className="space-y-2">
+                {EXPERIENCE_LEVELS.map(({ value, label, sub }) => (
                   <label
                     key={value}
-                    className="flex items-start gap-3 cursor-pointer"
+                    className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${
+                      form.experienceLevel === value
+                        ? "border-indigo-400 bg-indigo-50"
+                        : "border-gray-200 hover:border-gray-300 bg-gray-50/50"
+                    }`}
                   >
+                    <div
+                      className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                        form.experienceLevel === value
+                          ? "border-indigo-500"
+                          : "border-gray-300"
+                      }`}
+                    >
+                      {form.experienceLevel === value && (
+                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-[#14141e]">{label}</p>
+                      <p className="text-xs text-gray-400">{sub}</p>
+                    </div>
                     <input
                       type="radio"
                       name="experienceLevel"
@@ -226,36 +258,30 @@ export default function OnboardingForm() {
                       onChange={() =>
                         setForm((f) => ({ ...f, experienceLevel: value }))
                       }
-                      className="mt-0.5 accent-indigo-600"
+                      className="sr-only"
                     />
-                    <span className="text-sm text-gray-700">{label}</span>
                   </label>
                 ))}
               </div>
             </div>
 
-            <button
-              onClick={() => setStep(2)}
-              disabled={!step1Valid}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-200 text-white font-medium py-3 rounded-lg text-sm"
-            >
-              Next
-            </button>
+            <PrimaryButton onClick={() => setStep(2)} disabled={!step1Valid}>
+              Continue
+            </PrimaryButton>
           </>
         )}
 
-        {/* ── STEP 2 ─────────────────────────────────────────────────────────── */}
+        {/* ── STEP 2 ──────────────────────────────────────────────────────── */}
         {step === 2 && (
           <>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            <h1 className="text-xl font-bold text-[#14141e] mb-1">
               What topics interest you?
             </h1>
-            <p className="text-sm text-gray-500 mb-6">
-              Add up to 5 topics. Be specific — &quot;RAG for customer
-              support&quot; is better than just &quot;RAG&quot;.
+            <p className="text-sm text-gray-500 mb-7">
+              Add up to 5 topics. Specific beats generic.
             </p>
 
-            <div className="flex gap-2 mb-1">
+            <div className="flex gap-2 mb-1.5">
               <input
                 type="text"
                 value={topicInput}
@@ -270,21 +296,22 @@ export default function OnboardingForm() {
                   }
                 }}
                 placeholder="e.g. RAG for customer support"
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="flex-1 bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
               />
               <button
                 onClick={() => addTopic(topicInput)}
                 disabled={form.topics.length >= 5}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-200 text-white text-sm font-medium px-4 py-2 rounded-lg"
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors shrink-0"
               >
-                Add topic
+                Add
               </button>
             </div>
+
             {topicError && (
               <p className="text-xs text-red-500 mt-1">{topicError}</p>
             )}
-            <p className="text-xs text-gray-400 mt-1 mb-4">
-              {form.topics.length} / 5 topics
+            <p className="text-xs text-gray-400 mt-1 mb-5">
+              {form.topics.length} / 5 topics added
             </p>
 
             {form.topics.length > 0 && (
@@ -292,13 +319,13 @@ export default function OnboardingForm() {
                 {form.topics.map((t) => (
                   <span
                     key={t}
-                    className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 text-sm px-3 py-1.5 rounded-full border border-indigo-200"
+                    className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm px-3 py-1.5 rounded-full"
                   >
                     {t}
                     <button
                       onClick={() => removeTopic(t)}
                       aria-label={`Remove ${t}`}
-                      className="text-indigo-400 hover:text-indigo-700 leading-none"
+                      className="text-indigo-400 hover:text-indigo-700 leading-none ml-0.5"
                     >
                       ×
                     </button>
@@ -308,57 +335,51 @@ export default function OnboardingForm() {
             )}
 
             <div className="mb-8">
-              <p className="text-xs font-medium text-gray-500 mb-2">
-                Suggested topics
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                Suggestions
               </p>
               <div className="flex flex-wrap gap-2">
-                {SUGGESTED_TOPICS.filter((s) => !form.topics.includes(s)).map(
-                  (s) => (
-                    <button
-                      key={s}
-                      onClick={() => addTopic(s)}
-                      disabled={form.topics.length >= 5}
-                      className="text-sm text-gray-600 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-40 px-3 py-1.5 rounded-full border border-gray-200 hover:border-indigo-200"
-                    >
-                      + {s}
-                    </button>
-                  )
-                )}
+                {SUGGESTED_TOPICS.filter(
+                  (s) => !form.topics.includes(s)
+                ).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => addTopic(s)}
+                    disabled={form.topics.length >= 5}
+                    className="text-sm text-gray-500 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-40 px-3 py-1.5 rounded-full border border-gray-200 hover:border-indigo-200 transition-colors"
+                  >
+                    + {s}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(1)}
-                className="flex-1 border border-gray-300 hover:border-gray-400 text-gray-700 font-medium py-3 rounded-lg text-sm"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                disabled={!step2Valid}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-200 text-white font-medium py-3 rounded-lg text-sm"
-              >
-                Next
-              </button>
+              <GhostButton onClick={() => setStep(1)}>Back</GhostButton>
+              <PrimaryButton onClick={() => setStep(3)} disabled={!step2Valid}>
+                Continue
+              </PrimaryButton>
             </div>
           </>
         )}
 
-        {/* ── STEP 3 ─────────────────────────────────────────────────────────── */}
+        {/* ── STEP 3 ──────────────────────────────────────────────────────── */}
         {step === 3 && (
           <>
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">
-              Connect your Notion workspace
+            <h1 className="text-xl font-bold text-[#14141e] mb-1">
+              Connect Notion
             </h1>
+            <p className="text-sm text-gray-500 mb-7">
+              Your digest will be delivered here every morning.
+            </p>
 
-            <ol className="space-y-2.5 mb-8 text-sm text-gray-600">
+            <ol className="space-y-2 mb-7">
               {[
                 <>
                   Go to{" "}
-                  <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">
+                  <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
                     notion.so/my-integrations
-                  </code>
+                  </span>
                 </>,
                 <>Click &quot;New integration&quot;</>,
                 <>Name it &quot;AI Digest&quot; and save</>,
@@ -366,26 +387,26 @@ export default function OnboardingForm() {
                 <>Create a new Notion database (full page)</>,
                 <>
                   Open the database →{" "}
-                  <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">
+                  <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
                     ...
-                  </code>{" "}
-                  menu → Connections → add your AI Digest integration
+                  </span>{" "}
+                  → Connections → add AI Digest
                 </>,
                 <>Copy the Database ID from the URL</>,
               ].map((text, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="text-indigo-600 font-semibold shrink-0">
+                <li key={i} className="flex gap-3">
+                  <span className="text-indigo-500 font-bold text-xs shrink-0 w-4 text-right mt-0.5">
                     {i + 1}.
                   </span>
-                  <span>{text}</span>
+                  <span className="text-sm text-gray-500">{text}</span>
                 </li>
               ))}
             </ol>
 
-            <div className="space-y-4 mb-5">
+            <div className="space-y-3 mb-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notion Integration Token
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                  Integration Token
                 </label>
                 <input
                   type="password"
@@ -395,25 +416,22 @@ export default function OnboardingForm() {
                     setConnectionStatus("idle");
                   }}
                   placeholder="secret_xxxxxxxxxxxx"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm font-mono text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notion Database ID
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                  Database ID
                 </label>
                 <input
                   type="text"
                   value={form.notionDatabaseId}
                   onChange={(e) => {
-                    setForm((f) => ({
-                      ...f,
-                      notionDatabaseId: e.target.value,
-                    }));
+                    setForm((f) => ({ ...f, notionDatabaseId: e.target.value }));
                     setConnectionStatus("idle");
                   }}
                   placeholder="32 character ID from the URL"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm font-mono text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
                 />
               </div>
             </div>
@@ -425,7 +443,7 @@ export default function OnboardingForm() {
                 !form.notionDatabaseId ||
                 connectionStatus === "testing"
               }
-              className="w-full border border-indigo-600 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 font-medium py-2.5 rounded-lg text-sm mb-3"
+              className="w-full border border-indigo-400 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 font-medium py-3 rounded-xl text-sm mb-4 transition-colors"
             >
               {connectionStatus === "testing" ? (
                 <span className="flex items-center justify-center gap-2">
@@ -437,25 +455,19 @@ export default function OnboardingForm() {
             </button>
 
             {connectionStatus === "success" && (
-              <p className="text-sm text-green-600 flex items-center gap-1.5 mb-2">
+              <p className="text-sm text-emerald-600 flex items-center gap-2 mb-4">
                 <span>✓</span> Connected successfully
               </p>
             )}
             {connectionStatus === "error" && (
-              <p className="text-sm text-red-500 mb-2">{connectionError}</p>
+              <p className="text-sm text-red-500 mb-4">{connectionError}</p>
             )}
 
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setStep(2)}
-                className="flex-1 border border-gray-300 hover:border-gray-400 text-gray-700 font-medium py-3 rounded-lg text-sm"
-              >
-                Back
-              </button>
-              <button
+            <div className="flex gap-3 mt-2">
+              <GhostButton onClick={() => setStep(2)}>Back</GhostButton>
+              <PrimaryButton
                 onClick={completeSetup}
                 disabled={!step3Complete || saving}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-200 text-white font-medium py-3 rounded-lg text-sm"
               >
                 {saving ? (
                   <span className="flex items-center justify-center gap-2">
@@ -464,12 +476,51 @@ export default function OnboardingForm() {
                 ) : (
                   "Complete setup"
                 )}
-              </button>
+              </PrimaryButton>
             </div>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+// ── shared primitives ──────────────────────────────────────────────────────────
+
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex-1 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-30 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+    >
+      {children}
+    </button>
+  );
+}
+
+function GhostButton({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-1 bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-600 font-medium py-3 rounded-xl text-sm transition-colors"
+    >
+      {children}
+    </button>
   );
 }
 
