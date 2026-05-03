@@ -1,1 +1,55 @@
-# TODO: implement
+# Daily arXiv digest pipeline
+#
+# Required GitHub secrets:
+#   OPENAI_API_KEY          — shared across all users for GPT-4o-mini scoring
+#   SUPABASE_URL            — project URL, used to read user configs and write run results
+#   SUPABASE_SERVICE_ROLE_KEY — service role key, bypasses RLS for pipeline operations
+#
+# Notion tokens and database IDs are stored per-user in Supabase (user_configs table)
+# and are NOT stored as GitHub secrets.
+
+name: Daily Pipeline
+
+on:
+  schedule:
+    - cron: "0 5 * * *"   # 05:00 UTC — digest ready before local 7am in all timezones
+  workflow_dispatch:        # manual trigger from the GitHub Actions UI
+
+concurrency:
+  group: daily-pipeline
+  cancel-in-progress: false  # never cancel a run in progress; let it finish
+
+permissions:
+  contents: read
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('pipeline/requirements.txt') }}
+          restore-keys: |
+            pip-
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Run pipeline
+        working-directory: pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python pipeline.py
