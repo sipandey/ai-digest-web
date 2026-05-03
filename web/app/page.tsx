@@ -8,7 +8,7 @@ export default function LandingPage() {
       {/* ------------------------------------------------------------------ */}
       <nav className="bg-gray-950 px-6 py-4 flex items-center justify-between">
         <span className="text-white font-semibold text-lg tracking-tight">
-          arXiv Digest
+          AI Digest
         </span>
         <div className="flex items-center gap-4">
           <Link
@@ -218,7 +218,7 @@ export default function LandingPage() {
       {/* ------------------------------------------------------------------ */}
       <footer className="bg-gray-950 px-6 py-10 text-center">
         <p className="text-gray-400 text-sm">
-          arXiv Digest · Built for developers learning AI
+          AI Digest · Built for developers learning AI
         </p>
         <div className="mt-3 flex items-center justify-center gap-6 text-sm">
           <a href="#" className="text-gray-500 hover:text-gray-300">

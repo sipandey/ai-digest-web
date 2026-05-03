@@ -151,7 +151,7 @@ export default function OnboardingForm() {
       {/* Progress */}
       <div className="w-full max-w-lg mb-8">
         <div className="mb-3 flex items-center justify-between gap-4">
-          <p className="text-sm font-semibold text-indigo-600">arXiv Digest</p>
+          <p className="text-sm font-semibold text-indigo-600">AI Digest</p>
           <button
             onClick={handleSignOut}
             disabled={signingOut}
@@ -361,7 +361,7 @@ export default function OnboardingForm() {
                   </code>
                 </>,
                 <>Click &quot;New integration&quot;</>,
-                <>Name it &quot;arXiv Digest&quot; and save</>,
+                <>Name it &quot;AI Digest&quot; and save</>,
                 <>Copy the Internal Integration Token</>,
                 <>Create a new Notion database (full page)</>,
                 <>
@@ -369,7 +369,7 @@ export default function OnboardingForm() {
                   <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">
                     ...
                   </code>{" "}
-                  menu → Connections → add your arXiv Digest integration
+                  menu → Connections → add your AI Digest integration
                 </>,
                 <>Copy the Database ID from the URL</>,
               ].map((text, i) => (

@@ -1,4 +1,4 @@
-# arXiv Digest Web — Manual Testing Guide
+# AI Digest Web — Manual Testing Guide
 
 Complete end-to-end testing guide for the developer before inviting beta users.
 All tests assume macOS, repo checked out locally, dev server at `localhost:3000`.
@@ -675,7 +675,7 @@ EOF
 **EXPECTED:**
 - Terminal prints `Page created: https://www.notion.so/...`
 - In Notion, the new page has:
-  - Title: `arXiv Digest — 2024-01-15-test`
+  - Title: `AI Digest — 2024-01-15-test`
   - Heading: `[8.5/10] Test Paper: Improving RAG Retrieval...`
   - Metadata line: `Smith J., Lee A.  ·  cs.CL  ·  ...`
   - 5 toggle blocks: 🔍 Problem, ⚙️ Approach, 📊 Results, 🏗️ Builder Takeaway, 📚 Before Reading
@@ -1269,7 +1269,7 @@ DELETE FROM papers_cache WHERE fetch_date = CURRENT_DATE;
 
 **Step 9–10: Verify Notion**
 1. Click **View in Notion**
-2. Verify page title: `arXiv Digest — YYYY-MM-DD`
+2. Verify page title: `AI Digest — YYYY-MM-DD`
 3. Verify paper count summary line at top
 4. Open one toggle — verify Problem / Approach / Results / Builder Takeaway / Before Reading all populated
 5. Verify "Read paper →" links to real arXiv PDF

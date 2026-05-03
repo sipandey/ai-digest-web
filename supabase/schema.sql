@@ -144,6 +144,42 @@ CREATE INDEX IF NOT EXISTS papers_cache_fetch_date_idx ON papers_cache (fetch_da
 CREATE INDEX IF NOT EXISTS papers_cache_arxiv_id_idx   ON papers_cache (arxiv_id);
 
 -- =============================================================================
+-- TABLE: paper_rankings_cache
+-- Per-user cached LLM scoring and summary fields for a given fetch date/profile.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS paper_rankings_cache (
+  id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id           uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  fetch_date        date        NOT NULL,
+  profile_hash      text        NOT NULL,
+  arxiv_id          text        NOT NULL,
+  prompt_version    integer     NOT NULL DEFAULT 1,
+  score             numeric(3,1),
+  include           boolean     NOT NULL DEFAULT false,
+  problem           text,
+  approach          text,
+  results           text,
+  builder_takeaway  text,
+  learning_path     text,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE paper_rankings_cache IS
+  'Per-user cache of LLM ranking results keyed by fetch date, profile hash, '
+  'and arXiv paper id. Used to avoid re-scoring the same papers on same-day reruns.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS paper_rankings_cache_identity_key
+  ON paper_rankings_cache (user_id, fetch_date, profile_hash, arxiv_id, prompt_version);
+
+CREATE INDEX IF NOT EXISTS paper_rankings_cache_lookup_idx
+  ON paper_rankings_cache (user_id, fetch_date, profile_hash);
+
+CREATE TRIGGER paper_rankings_cache_set_updated_at
+  BEFORE UPDATE ON paper_rankings_cache
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =============================================================================
 -- Row Level Security
 -- =============================================================================
 
@@ -151,6 +187,7 @@ ALTER TABLE users         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_configs  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pipeline_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE papers_cache  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE paper_rankings_cache ENABLE ROW LEVEL SECURITY;
 
 -- users — match directly on clerk_id exposed by Clerk JWT
 CREATE POLICY users_select_own ON users

@@ -119,7 +119,7 @@ def _find_page_for_date(
         json={
             "filter": {
                 "property": "Name",
-                "title": {"equals": f"arXiv Digest — {run_date}"},
+                "title": {"equals": f"AI Digest — {run_date}"},
             },
             "page_size": 1,
         },
@@ -205,7 +205,7 @@ def deliver_to_notion(
 ) -> str:
     """Upsert a digest page in the user's Notion database. Return page URL.
 
-    If a page titled "arXiv Digest — {run_date}" already exists in the
+    If a page titled "AI Digest — {run_date}" already exists in the
     database, its content is cleared and rewritten. Otherwise a new page
     is created. This ensures at most one digest page per day regardless of
     how many times the pipeline runs.
@@ -220,7 +220,7 @@ def deliver_to_notion(
 
     # Build full block list
     all_blocks: list[dict] = [
-        _heading(1, f"arXiv Digest — {run_date}"),
+        _heading(1, f"AI Digest — {run_date}"),
         _paragraph(f"{len(papers)} paper{'s' if len(papers) != 1 else ''} matched your profile today."),
         _divider(),
     ]
@@ -247,7 +247,7 @@ def deliver_to_notion(
         "parent": {"database_id": database_id},
         "properties": {
             "Name": {
-                "title": [{"text": {"content": f"arXiv Digest — {run_date}"}}]
+                "title": [{"text": {"content": f"AI Digest — {run_date}"}}]
             }
         },
         "children": all_blocks[:BLOCK_LIMIT],

@@ -6,7 +6,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "arXiv Digest",
+  title: "AI Digest",
   description:
     "Your personalised daily ML research digest, delivered to Notion",
 };

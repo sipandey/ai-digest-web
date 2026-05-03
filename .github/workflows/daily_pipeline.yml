@@ -1,4 +1,4 @@
-# Daily arXiv digest pipeline
+# Daily AI Digest pipeline
 #
 # Required GitHub secrets:
 #   OPENAI_API_KEY          — shared across all users for GPT-4o-mini scoring
