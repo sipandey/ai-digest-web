@@ -29,6 +29,11 @@ type UserProfile = {
   name: string | null;
 };
 
+// ── constants ─────────────────────────────────────────────────────────────────
+
+const POLL_INTERVAL_MS = 15_000;
+const TERMINAL_STATUSES = new Set<PipelineRun["status"]>(["complete", "failed", "empty"]);
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function greeting(timezoneOffset: number): string {
@@ -167,6 +172,25 @@ export default function DashboardView() {
     }
     load();
   }, [router]);
+
+  // Auto-refresh while today's run is active (pending or running).
+  useEffect(() => {
+    const today = todayISO();
+    const todayRun = runs.find((r) => r.run_date === today) ?? null;
+    if (!todayRun || TERMINAL_STATUSES.has(todayRun.status)) return;
+
+    const timeout = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/users/runs");
+        const data = await res.json();
+        setRuns(data.runs ?? []);
+      } catch {
+        // silently ignore — next tick will retry
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearTimeout(timeout);
+  }, [runs]);
 
   async function triggerRun() {
     setTriggering(true);
@@ -308,18 +332,21 @@ function TodayCard({
       dot: "bg-amber-400 animate-pulse",
       heading: "Digest is being generated…",
       body: (
-        <p className="text-sm text-gray-500">Check back in a few minutes.</p>
+        <p className="text-sm text-gray-500">
+          Refreshing automatically every 15 s
+          <span className="inline-block animate-pulse">…</span>
+        </p>
       ),
     },
     pending: {
-      dot: "bg-gray-300",
-      heading: "Digest hasn't run yet today",
+      dot: "bg-gray-300 animate-pulse",
+      heading: "Digest is queued…",
       body: (
         <p className="text-sm text-gray-500">
-          Scheduled for {padDigestHour(digestHour)} your time.
+          Refreshing automatically every 15 s
+          <span className="inline-block animate-pulse">…</span>
         </p>
       ),
-      action: <div className="mt-5">{runNowBtn}</div>,
     },
     none: {
       dot: "bg-gray-300",
