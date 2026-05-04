@@ -31,10 +31,13 @@ function b64urlEncode(data: ArrayBuffer | string): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
-function b64urlDecode(s: string): Uint8Array {
+function b64urlDecode(s: string): Uint8Array<ArrayBuffer> {
   // Buffer.from().buffer is typed as ArrayBufferLike (includes SharedArrayBuffer).
-  // crypto.subtle APIs require a plain ArrayBuffer, so copy into a fresh Uint8Array
-  // backed by a new ArrayBuffer that TypeScript can verify is not shared.
+  // crypto.subtle APIs require BufferSource, which expects ArrayBufferView<ArrayBuffer>
+  // specifically.  Constructing a new Uint8Array(n) always allocates a plain
+  // ArrayBuffer, so TypeScript can prove the backing store is not shared.
+  // We must annotate the return type explicitly — otherwise TS widens it back to
+  // Uint8Array<ArrayBufferLike> at the function boundary.
   const buf = Buffer.from(s, "base64url");
   const out = new Uint8Array(buf.length);
   out.set(buf);
