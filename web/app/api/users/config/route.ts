@@ -19,31 +19,11 @@ async function saveUserConfig(
   userId: string,
   values: Record<string, unknown>
 ) {
-  const { data: existingConfigs, error: lookupError } = await supabaseAdmin
-    .from("user_configs")
-    .select("id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1);
-
-  if (lookupError) {
-    return { data: null, error: lookupError };
-  }
-
-  const existingConfigId = existingConfigs?.[0]?.id;
-
-  if (existingConfigId) {
-    return supabaseAdmin
-      .from("user_configs")
-      .update(values)
-      .eq("id", existingConfigId)
-      .select()
-      .single();
-  }
-
+  // Single atomic upsert — no SELECT + INSERT/UPDATE race condition.
+  // Requires a unique constraint on user_configs(user_id).
   return supabaseAdmin
     .from("user_configs")
-    .insert({ user_id: userId, ...values })
+    .upsert({ user_id: userId, ...values }, { onConflict: "user_id" })
     .select()
     .single();
 }
