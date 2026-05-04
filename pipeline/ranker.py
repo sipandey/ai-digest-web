@@ -497,11 +497,12 @@ def _submit_and_poll_batch(
             log.warning("Batch [%s]: missing content for custom_id=%s", label, cid)
             results[cid] = "{}"
 
-    # Clean up uploaded input file (best-effort)
-    try:
-        client.files.delete(file_obj.id)
-    except Exception:
-        pass
+    # Clean up both files (best-effort) — output accumulates against storage quota
+    for fid in (file_obj.id, batch.output_file_id):
+        try:
+            client.files.delete(fid)
+        except Exception:
+            pass
 
     return results
 
