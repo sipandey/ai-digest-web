@@ -415,7 +415,7 @@ export default function OnboardingForm() {
                     setForm((f) => ({ ...f, notionToken: e.target.value }));
                     setConnectionStatus("idle");
                   }}
-                  placeholder="secret_xxxxxxxxxxxx"
+                  placeholder="ntn_xxxxxxxxxxxx"
                   className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm font-mono text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
                 />
               </div>

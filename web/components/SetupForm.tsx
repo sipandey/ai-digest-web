@@ -234,7 +234,7 @@ export default function SetupForm() {
                   </label>
                   <input
                     type="password"
-                    placeholder="secret_…"
+                    placeholder="ntn_…"
                     value={form.notionToken}
                     onChange={(e) => {
                       set("notionToken", e.target.value);
@@ -271,7 +271,7 @@ export default function SetupForm() {
                   />
                   <p className="text-xs text-gray-400 mt-1.5">
                     Open your database in Notion → copy the ID from the URL:
-                    notion.so/…/<span className="font-semibold text-gray-600">THIS-PART</span>?v=…
+                    notion.so/<span className="font-semibold text-gray-600">THIS-PART</span>?v=…
                   </p>
                 </div>
               </div>
