@@ -183,11 +183,41 @@ CREATE TRIGGER paper_rankings_cache_set_updated_at
 -- Row Level Security
 -- =============================================================================
 
-ALTER TABLE users         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_configs  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pipeline_runs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE papers_cache  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE paper_rankings_cache ENABLE ROW LEVEL SECURITY;
+-- =============================================================================
+-- TABLE: user_delivered_papers
+-- Permanent record of every arXiv paper delivered to each user across all days.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS user_delivered_papers (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  arxiv_id        text        NOT NULL,
+  delivered_date  date        NOT NULL,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT user_delivered_papers_user_paper_key UNIQUE (user_id, arxiv_id)
+);
+
+COMMENT ON TABLE user_delivered_papers IS
+  'Permanent record of every arXiv paper delivered to each user. '
+  'The pipeline filters this set out before scoring so users never see '
+  'the same paper twice across digest days.';
+
+CREATE INDEX IF NOT EXISTS user_delivered_papers_user_id_idx
+  ON user_delivered_papers (user_id);
+
+CREATE INDEX IF NOT EXISTS user_delivered_papers_arxiv_id_idx
+  ON user_delivered_papers (arxiv_id);
+
+-- =============================================================================
+-- Row Level Security
+-- =============================================================================
+
+ALTER TABLE users                  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_configs           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pipeline_runs          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE papers_cache           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE paper_rankings_cache   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_delivered_papers  ENABLE ROW LEVEL SECURITY;
 
 -- users — match directly on clerk_id exposed by Clerk JWT
 CREATE POLICY users_select_own ON users
@@ -222,3 +252,11 @@ CREATE POLICY pipeline_runs_select_own ON pipeline_runs
 -- papers_cache — readable by all authenticated users (shared, non-sensitive)
 CREATE POLICY papers_cache_select_authenticated ON papers_cache
   FOR SELECT USING (auth.role() = 'authenticated');
+
+-- user_delivered_papers — users can read their own delivery history
+CREATE POLICY user_delivered_papers_select_own ON user_delivered_papers
+  FOR SELECT USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );

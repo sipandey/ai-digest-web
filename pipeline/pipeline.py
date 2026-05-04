@@ -81,6 +81,58 @@ def _is_user_due(user_config: dict, utc_hour: int) -> bool:
     return utc_hour == target_utc_hour
 
 
+def _load_seen_paper_ids(user_id: str) -> set:
+    """Return the set of arXiv IDs already delivered to *user_id* on any past day.
+
+    Uses a paginated query so the result is never silently truncated for users
+    with a long history (Supabase caps un-paginated responses at 1 000 rows).
+    """
+    seen: set = set()
+    page_size = 1000
+    offset = 0
+    while True:
+        response = (
+            supabase.table("user_delivered_papers")
+            .select("arxiv_id")
+            .eq("user_id", user_id)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        page = response.data or []
+        seen.update(row["arxiv_id"] for row in page)
+        if len(page) < page_size:
+            break
+        offset += page_size
+    return seen
+
+
+def _record_delivered_papers(
+    user_id: str, arxiv_ids: list, delivered_date: str
+) -> None:
+    """Persist *arxiv_ids* as delivered for *user_id* so they are excluded from
+    all future digests.
+
+    Uses upsert with ON CONFLICT DO NOTHING so re-running a day (e.g. manual
+    dispatch) never raises a duplicate-key error and doesn't overwrite the
+    original delivered_date.
+    """
+    if not arxiv_ids:
+        return
+    rows = [
+        {"user_id": user_id, "arxiv_id": aid, "delivered_date": delivered_date}
+        for aid in arxiv_ids
+    ]
+    supabase.table("user_delivered_papers").upsert(
+        rows,
+        on_conflict="user_id,arxiv_id",
+        ignore_duplicates=True,
+    ).execute()
+    log.info(
+        "Delivered papers recorded",
+        extra={"user_id": user_id, "count": len(arxiv_ids), "delivered_date": delivered_date},
+    )
+
+
 def _upsert_run(user_id: str, run_date: str, **fields) -> str:
     """Create or update a pipeline_runs row; always return the run id."""
     existing = (
@@ -179,15 +231,31 @@ def main() -> None:
         )
 
         try:
-            # Per-user scoring
-            scored = rank_papers(papers, user_config, use_batch=use_batch)
+            # Filter out papers already delivered to this user on previous days
+            seen_ids = _load_seen_paper_ids(user_id)
+            fresh_papers = [p for p in papers if p.get("arxiv_id", "") not in seen_ids]
+            n_deduped = len(papers) - len(fresh_papers)
+            if n_deduped:
+                log.info(
+                    "Cross-day deduplication",
+                    extra={
+                        "run_date": run_date,
+                        "run_id": run_id,
+                        "user_id": user_id,
+                        "papers_excluded": n_deduped,
+                        "papers_remaining": len(fresh_papers),
+                    },
+                )
+
+            # Per-user scoring (only fresh papers)
+            scored = rank_papers(fresh_papers, user_config, use_batch=use_batch)
             log.info(
                 "Scoring complete",
                 extra={
                     "run_date": run_date,
                     "run_id": run_id,
                     "user_id": user_id,
-                    "papers_fetched": len(papers),
+                    "papers_fetched": len(fresh_papers),
                     "papers_passed": len(scored),
                 },
             )
@@ -210,6 +278,13 @@ def main() -> None:
             # Per-user Notion delivery
             notion_url = deliver_to_notion(scored, user_config, run_date)
             top_score = float(scored[0].get("score", 0)) if scored else None
+
+            # Record delivered papers so they are excluded from future digests
+            _record_delivered_papers(
+                user_id,
+                [p["arxiv_id"] for p in scored if p.get("arxiv_id")],
+                run_date,
+            )
 
             supabase.table("pipeline_runs").update(
                 {
