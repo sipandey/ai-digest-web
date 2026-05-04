@@ -751,10 +751,11 @@ def rank_papers(
             continue
 
         cache_hits += 1
+        score = _coerce_score(cached.get("score"))
         base = {
             **paper,
-            "score": _coerce_score(cached.get("score")),
-            "include": bool(cached.get("include")),
+            "score": score,
+            "include": score >= SCORE_THRESHOLD,  # recompute — don't trust cached flag
         }
 
         if not base["include"]:
@@ -792,10 +793,11 @@ def rank_papers(
     newly_passing = 0
     for paper in papers_to_score:
         ranking = score_map.get(_arxiv_id(paper), {"score": 0.0, "include": False})
+        score = _coerce_score(ranking.get("score"))
         base = {
             **paper,
-            "score": _coerce_score(ranking.get("score")),
-            "include": bool(ranking.get("include")),
+            "score": score,
+            "include": score >= SCORE_THRESHOLD,  # recompute — don't trust LLM flag
         }
         if base["include"]:
             newly_passing += 1
