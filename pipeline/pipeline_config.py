@@ -217,7 +217,7 @@ CACHE_QUERY_CHUNK_SIZE: int = 100
 # Increment this whenever the scoring or summary prompts change in a way that
 # makes old cached values incompatible with the new output format.
 # Old cache rows are ignored (not deleted) — they simply won't match the query.
-PROMPT_VERSION: int = 1
+PROMPT_VERSION: int = 2
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -289,11 +289,11 @@ LEVEL_DESCRIPTIONS: dict[str, str] = {
 # Maximum word count the LLM is instructed to use for each summary field.
 # These values are injected directly into the summary prompt.
 SUMMARY_FIELD_WORD_LIMITS: dict[str, int] = {
-    "problem":          50,
-    "approach":         50,
-    "results":          50,
-    "builder_takeaway": 50,
-    "learning_path":    50,
+    "problem":          100,   # 2 sentences — what problem the paper solves
+    "approach":         100,   # 2 sentences — how they solved it, plain language
+    "results":          100,   # 2 sentences — what they found, practical meaning of numbers
+    "builder_takeaway": 80,   # 1 sentence  — single actionable thing a developer can do
+    "learning_path":    50,   # 1 sentence  — prerequisite concept or "no prerequisites"
 }
 
 
@@ -360,7 +360,8 @@ SUMMARY_SYSTEM_MESSAGE: str = (
 )
 
 SUMMARY_PROMPT_TEMPLATE: str = """\
-You are preparing concise digest fields for papers already selected for a specific user.
+You are preparing digest summaries for papers already selected for a specific user.
+Write for a developer who wants to understand and apply research — not an academic audience.
 
 USER PROFILE:
 {profile}
@@ -368,13 +369,24 @@ USER PROFILE:
 Experience level: {level_desc}
 Topics of interest: {topics_str}
 
-For EACH paper provide:
-- arxiv_id (copy from input)
-- problem (<={problem_words} words: what specific problem does it address?)
-- approach (<={approach_words} words: how does it solve it?)
-- results (<={results_words} words: key result or benchmark number)
-- builder_takeaway (<={builder_takeaway_words} words: one concrete thing this user can DO with this paper)
-- learning_path (<={learning_path_words} words: what should this user understand before reading it?)
+For EACH paper provide exactly these fields:
+
+- arxiv_id  (copy from input, unchanged)
+- problem   (2 sentences, <={problem_words} words)
+            What real-world or technical problem does this paper address?
+            Explain it plainly — avoid jargon, assume the reader is smart but not a domain expert.
+- approach  (2 sentences, <={approach_words} words)
+            What did the authors actually do or build to solve it?
+            Describe the method or technique in plain language; skip acronyms unless essential.
+- results   (2 sentences, <={results_words} words)
+            What did they find or achieve? Lead with the headline number or improvement.
+            Then explain what that number means in practice — why should a developer care?
+- builder_takeaway  (1 sentence, <={builder_takeaway_words} words)
+            The single most useful thing a developer building AI applications can take away
+            or directly apply from this paper. Start with an action verb (e.g. "Use…", "Replace…", "Try…").
+- learning_path  (1 sentence, <={learning_path_words} words)
+            What concept should the reader understand before diving into this paper?
+            If no prerequisites are needed, say "No prerequisites — start here."
 
 PAPERS:
 {papers_text}
