@@ -23,6 +23,11 @@ from pipeline_config import (
     MAX_SHORTLIST,
     SCORE_THRESHOLD,
     SCORE_ABSTRACT_MAX_CHARS,
+    # retry / timeout
+    OPENAI_MAX_RETRIES,
+    OPENAI_TIMEOUT_SECONDS,
+    OPENAI_CALL_MAX_RETRIES,
+    OPENAI_RETRY_MAX_WAIT_SECONDS,
     # batch API
     BATCH_POLL_INTERVAL,
     BATCH_TIMEOUT,
@@ -113,6 +118,66 @@ def _profile_hash(user_config: dict) -> str:
 
 def _arxiv_id(paper: dict) -> str:
     return paper["arxiv_id"]
+
+
+# ── OpenAI call with retry ─────────────────────────────────────────────────────
+
+
+def _call_openai_with_retry(
+    client: OpenAI,
+    *,
+    model: str,
+    messages: list[dict],
+    temperature: float,
+) -> str:
+    """Call chat.completions.create and return the raw content string.
+
+    Two retry layers work together:
+    - SDK layer (OPENAI_MAX_RETRIES): handles 429, 5xx transport errors with
+      its own exponential backoff — configured at client construction time.
+    - App layer (OPENAI_CALL_MAX_RETRIES): outer loop retries after the SDK
+      has already exhausted its attempts, or when json.loads() fails because
+      the model returned malformed JSON despite response_format=json_object.
+
+    App-layer backoff: waits 2^attempt seconds (2s, 4s, 8s, …),
+    capped at OPENAI_RETRY_MAX_WAIT_SECONDS.
+
+    Raises the last caught exception when all attempts are exhausted.
+    """
+    last_exc: Exception | None = None
+
+    for attempt in range(1, OPENAI_CALL_MAX_RETRIES + 1):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=temperature,
+            )
+            content = response.choices[0].message.content or "{}"
+            json.loads(content)  # validate JSON — raises JSONDecodeError if malformed
+            return content
+        except Exception as exc:
+            last_exc = exc
+            if attempt < OPENAI_CALL_MAX_RETRIES:
+                wait = min(2 ** attempt, OPENAI_RETRY_MAX_WAIT_SECONDS)
+                log.warning(
+                    "OpenAI call attempt %d/%d failed — retrying in %ds: %s",
+                    attempt,
+                    OPENAI_CALL_MAX_RETRIES,
+                    wait,
+                    exc,
+                )
+                time.sleep(wait)
+            else:
+                log.error(
+                    "OpenAI call failed after %d attempt(s): %s",
+                    OPENAI_CALL_MAX_RETRIES,
+                    exc,
+                    exc_info=True,
+                )
+
+    raise last_exc  # type: ignore[misc]
 
 
 # ── shortlist ──────────────────────────────────────────────────────────────────
@@ -556,16 +621,16 @@ def _score_batches(
         )
         call_count += 1
         try:
-            response = client.chat.completions.create(
+            content = _call_openai_with_retry(
+                client,
                 model=SCORE_MODEL,
                 messages=[
                     {"role": "system", "content": SCORE_SYSTEM_MESSAGE},
                     {"role": "user", "content": _build_score_prompt(batch, user_config)},
                 ],
-                response_format={"type": "json_object"},
                 temperature=SCORE_TEMPERATURE,
             )
-            result = json.loads(response.choices[0].message.content or "{}")
+            result = json.loads(content)
             for ranked in result.get("papers", []):
                 scored[ranked["arxiv_id"]] = {
                     "score": _coerce_score(ranked.get("score")),
@@ -573,7 +638,7 @@ def _score_batches(
                 }
         except Exception as exc:
             log.error(
-                "OpenAI scoring failed for batch starting at %d: %s",
+                "OpenAI scoring failed for batch starting at %d after all retries: %s",
                 batch_start, exc, exc_info=True,
             )
             for paper in batch:
@@ -596,16 +661,16 @@ def _summarize_batches(
         )
         call_count += 1
         try:
-            response = client.chat.completions.create(
+            content = _call_openai_with_retry(
+                client,
                 model=SUMMARY_MODEL,
                 messages=[
                     {"role": "system", "content": SUMMARY_SYSTEM_MESSAGE},
                     {"role": "user", "content": _build_summary_prompt(batch, user_config)},
                 ],
-                response_format={"type": "json_object"},
                 temperature=SUMMARY_TEMPERATURE,
             )
-            result = json.loads(response.choices[0].message.content or "{}")
+            result = json.loads(content)
             for summary in result.get("papers", []):
                 summaries[summary["arxiv_id"]] = {
                     "problem": summary.get("problem"),
@@ -616,7 +681,7 @@ def _summarize_batches(
                 }
         except Exception as exc:
             log.error(
-                "OpenAI summarization failed for batch starting at %d: %s",
+                "OpenAI summarization failed for batch starting at %d after all retries: %s",
                 batch_start, exc, exc_info=True,
             )
             for paper in batch:
@@ -654,7 +719,11 @@ def rank_papers(
     user_id = user_config.get("user_id")
     fetch_date = papers[0].get("fetch_date")
     profile_hash = _profile_hash(user_config)
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    client = OpenAI(
+        api_key=os.environ["OPENAI_API_KEY"],
+        max_retries=OPENAI_MAX_RETRIES,
+        timeout=OPENAI_TIMEOUT_SECONDS,
+    )
 
     # ── Phase 0: shortlist by topic overlap ───────────────────────────────────
     candidates = _shortlist_papers(papers, user_config)

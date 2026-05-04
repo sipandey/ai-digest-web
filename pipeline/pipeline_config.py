@@ -166,6 +166,27 @@ SCORE_ABSTRACT_MAX_CHARS: int = 400
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# OPENAI RETRY / TIMEOUT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# SDK-level retries per request (handles 429, 500, 502, 503, 504 automatically).
+# The SDK uses its own exponential backoff between these attempts.
+OPENAI_MAX_RETRIES: int = 3
+
+# Per-request timeout (seconds) passed to the OpenAI client.
+OPENAI_TIMEOUT_SECONDS: int = 120
+
+# Application-level retry attempts wrapping the SDK call in the synchronous
+# pipeline path. Catches JSON parse failures and errors the SDK didn't retry
+# (e.g. empty choices list, malformed response body).
+OPENAI_CALL_MAX_RETRIES: int = 3
+
+# Maximum wait (seconds) between application-level retry attempts.
+# Actual wait grows as 2^attempt (2s, 4s, 8s, …) capped at this value.
+OPENAI_RETRY_MAX_WAIT_SECONDS: int = 60
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # OPENAI BATCH API
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
