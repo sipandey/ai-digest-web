@@ -415,7 +415,7 @@ export default function SettingsView() {
               </div>
               {topicError && <p className="text-xs text-red-500 mb-2">{topicError}</p>}
               {topics.length >= 5 && (
-                <p className="text-xs text-amber-600 mb-2">5/5 — upgrade to Pro for unlimited topics</p>
+                <p className="text-xs text-amber-600 mb-2">5 topics maximum</p>
               )}
               {topics.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
@@ -587,12 +587,8 @@ export default function SettingsView() {
                 <p className="text-xs text-gray-400 mb-0.5">Email</p>
                 <p className="text-sm text-gray-700">{userProfile?.email ?? "—"}</p>
               </div>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                userProfile?.tier === "pro"
-                  ? "bg-indigo-100 text-indigo-700"
-                  : "bg-gray-100 text-gray-500"
-              }`}>
-                {userProfile?.tier === "pro" ? "Pro" : "Free"}
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700">
+                Free
               </span>
             </div>
             <button
