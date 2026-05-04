@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -14,7 +15,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 _PAGE_SIZE = 1000  # Supabase default cap; fetch in pages to handle > 1000 users
 
 
-def get_active_users(user_id: str | None = None) -> list[dict]:
+def get_active_users(user_id: Optional[str] = None) -> list[dict]:
     """Return user_config rows for all active users with Notion connected.
 
     Joins user_configs → users. Filters out deactivated parent accounts.
