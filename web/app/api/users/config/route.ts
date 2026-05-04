@@ -1,26 +1,10 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getAuthUserId, resolveUserById } from "@/lib/auth";
 
 // ── shared helper ─────────────────────────────────────────────────────────────
 
-async function resolveUser(clerkId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("users")
-    .select("id, clerk_id, email, name, tier, user_configs(*)")
-    .eq("clerk_id", clerkId)
-    .single();
-
-  if (error || !data) return null;
-  return data;
-}
-
-async function saveUserConfig(
-  userId: string,
-  values: Record<string, unknown>
-) {
-  // Single atomic upsert — no SELECT + INSERT/UPDATE race condition.
-  // Requires a unique constraint on user_configs(user_id).
+async function saveUserConfig(userId: string, values: Record<string, unknown>) {
   return supabaseAdmin
     .from("user_configs")
     .upsert({ user_id: userId, ...values }, { onConflict: "user_id" })
@@ -31,59 +15,48 @@ async function saveUserConfig(
 // ── GET /api/users/config ─────────────────────────────────────────────────────
 
 export async function GET() {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) {
+  const userId = await getAuthUserId();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const user = await resolveUser(clerkId);
+    const user = await resolveUserById(userId);
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const configs = user.user_configs as Record<string, unknown>[];
-    const config = configs?.[0] ?? null;
-
     return NextResponse.json({
       profile: {
-        email: user.email,
-        name: user.name,
+        email: user.email ?? null,
+        name: user.name ?? null,
         tier: user.tier,
+        // Let the UI know which auth method this user is using
+        authMethod: user.clerk_id ? "clerk" : "notion",
       },
-      config,
-      // Convenience flat flags consumed by DashboardView redirect logic
-      notion_connected: (config as Record<string, unknown> | null)?.notion_connected ?? false,
+      config: user.config,
+      notion_connected:
+        (user.config as Record<string, unknown> | null)?.notion_connected ?? false,
     });
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// ── POST /api/users/config — onboarding completion ────────────────────────────
+// ── POST /api/users/config — onboarding completion (Clerk users) ──────────────
 
 export async function POST(req: NextRequest) {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) {
+  const userId = await getAuthUserId();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const user = await resolveUser(clerkId);
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
     const body = await req.json();
-    const {
-      notionToken,
-      notionDatabaseId,
-      topics,
-      profileDescription,
-      experienceLevel,
-    } = body;
+    const { notionToken, notionDatabaseId, topics, profileDescription, experienceLevel } =
+      body;
 
-    const { data, error } = await saveUserConfig(user.id, {
+    const { data, error } = await saveUserConfig(userId, {
       notion_token: notionToken,
       notion_database_id: notionDatabaseId,
       notion_connected: true,
@@ -106,20 +79,14 @@ export async function POST(req: NextRequest) {
 // ── PATCH /api/users/config — partial settings update ────────────────────────
 
 export async function PATCH(req: NextRequest) {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) {
+  const userId = await getAuthUserId();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const user = await resolveUser(clerkId);
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
     const body = await req.json();
 
-    // Map camelCase request keys to snake_case DB columns
     const ALLOWED_FIELDS: Record<string, string> = {
       notionToken: "notion_token",
       notionDatabaseId: "notion_database_id",
@@ -131,7 +98,6 @@ export async function PATCH(req: NextRequest) {
       timezoneOffset: "timezone_offset",
       scoringPriorities: "scoring_priorities",
       active: "active",
-      // Also accept snake_case keys directly from the settings form
       notion_token: "notion_token",
       notion_database_id: "notion_database_id",
       notion_connected: "notion_connected",
@@ -151,7 +117,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
-    const { data, error } = await saveUserConfig(user.id, updates);
+    const { data, error } = await saveUserConfig(userId, updates);
 
     if (error) {
       console.error("Update user_configs error:", error);

@@ -63,9 +63,34 @@ export async function POST(req: Request) {
 
   const name = [first_name, last_name].filter(Boolean).join(" ") || null;
 
+  // ── Account linking: if this email belongs to an existing Notion-first user,
+  // attach the Clerk ID instead of creating a duplicate row. ──────────────────
+  if (primaryEmail) {
+    const { data: existingByEmail } = await supabaseAdmin
+      .from("users")
+      .select("id, clerk_id")
+      .eq("email", primaryEmail)
+      .maybeSingle();
+
+    if (existingByEmail && !existingByEmail.clerk_id) {
+      // Link the new Clerk account to the pre-existing Notion-first account
+      await supabaseAdmin
+        .from("users")
+        .update({ clerk_id: clerkId, name: name ?? undefined })
+        .eq("id", existingByEmail.id);
+      return NextResponse.json({ received: true });
+    }
+
+    if (existingByEmail?.clerk_id) {
+      // Duplicate signup for an already-claimed email — ignore silently
+      return NextResponse.json({ received: true });
+    }
+  }
+
+  // ── Brand-new user — insert ────────────────────────────────────────────────
   const { data: user, error: userError } = await supabaseAdmin
     .from("users")
-    .insert({ clerk_id: clerkId, email: primaryEmail, name })
+    .insert({ clerk_id: clerkId, email: primaryEmail ?? null, name })
     .select("id")
     .single();
 

@@ -1,6 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getAuthUserId } from "@/lib/auth";
 
 type TriggerMode = "direct" | "github_actions";
 
@@ -118,8 +118,8 @@ async function markRunFailed(runId: string, message: string) {
 }
 
 export async function POST() {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) {
+  const userId = await getAuthUserId();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -128,7 +128,7 @@ export async function POST() {
     const { data: user, error: userError } = await supabaseAdmin
       .from("users")
       .select("id, user_configs(notion_connected)")
-      .eq("clerk_id", clerkId)
+      .eq("id", userId)
       .single();
 
     if (userError || !user) {

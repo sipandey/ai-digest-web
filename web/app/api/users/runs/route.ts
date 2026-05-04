@@ -1,31 +1,20 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getAuthUserId } from "@/lib/auth";
 
 export async function GET() {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) {
+  const userId = await getAuthUserId();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    // Resolve internal user ID
-    const { data: user, error: userError } = await supabaseAdmin
-      .from("users")
-      .select("id")
-      .eq("clerk_id", clerkId)
-      .single();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
     const { data: runs, error: runsError } = await supabaseAdmin
       .from("pipeline_runs")
       .select(
-        "id, run_date, status, papers_fetched, papers_passed, top_score, notion_page_url, error_message, started_at, completed_at"
+        "id, run_date, status, papers_fetched, papers_passed, top_score, notion_page_url, error_message, started_at, completed_at",
       )
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .order("run_date", { ascending: false })
       .limit(7);
 

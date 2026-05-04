@@ -18,15 +18,16 @@ $$;
 -- One row per registered user, synced from Clerk via webhook.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS users (
-  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  clerk_id    text        UNIQUE NOT NULL,
-  email       text        UNIQUE NOT NULL,
-  name        text,
-  tier        text        NOT NULL DEFAULT 'free'
-                          CHECK (tier IN ('free', 'pro')),
-  active      boolean     NOT NULL DEFAULT true,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now()
+  id             uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  clerk_id       text        UNIQUE,          -- NULL for Notion-first (no-account) users
+  email          text        UNIQUE,          -- NULL for Notion-first users who skip email
+  notion_bot_id  text        UNIQUE,          -- Notion integration bot ID; identity for guest users
+  name           text,
+  tier           text        NOT NULL DEFAULT 'free'
+                             CHECK (tier IN ('free', 'pro')),
+  active         boolean     NOT NULL DEFAULT true,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now()
 );
 
 COMMENT ON TABLE users IS

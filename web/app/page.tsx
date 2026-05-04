@@ -14,10 +14,10 @@ export default function LandingPage() {
             href="/login"
             className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
           >
-            Log in
+            Sign in
           </Link>
           <Link
-            href="/signup"
+            href="/setup"
             className="text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-medium transition-colors"
           >
             Get started
@@ -52,18 +52,27 @@ export default function LandingPage() {
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            href="/signup"
+            href="/setup"
             className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold px-8 py-3.5 rounded-2xl text-base transition-colors"
           >
-            Get started free
+            Continue with Notion →
           </Link>
-          <a
-            href="#how"
+          <Link
+            href="/signup"
             className="w-full sm:w-auto bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 font-medium px-8 py-3.5 rounded-2xl text-base transition-colors"
           >
-            How it works
-          </a>
+            Sign up with email
+          </Link>
         </div>
+        <p className="mt-4 text-sm text-gray-400">
+          Already have an account?{" "}
+          <Link href="/login" className="text-indigo-600 hover:underline">
+            Sign in
+          </Link>{" · "}
+          <Link href="/setup/verify" className="text-indigo-600 hover:underline">
+            Return with Notion token
+          </Link>
+        </p>
       </section>
 
       {/* ── HOW IT WORKS ─────────────────────────────────────────────────── */}
