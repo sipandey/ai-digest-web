@@ -59,6 +59,28 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _is_user_due(user_config: dict, utc_hour: int) -> bool:
+    """Return True when this user's digest is due at *utc_hour*.
+
+    A user's delivery time in UTC is:
+        target_utc_hour = (digest_hour - timezone_offset) % 24
+
+    Examples:
+        digest_hour=8,  timezone_offset=-5  →  target 13:00 UTC
+        digest_hour=7,  timezone_offset=+1  →  target  6:00 UTC
+        digest_hour=22, timezone_offset=+9  →  target 13:00 UTC
+
+    timezone_offset is a whole-hour integer (matching the options exposed
+    in the Settings UI).  digest_hour is 0–23 local time.
+    """
+    raw_hour   = user_config.get("digest_hour")
+    raw_offset = user_config.get("timezone_offset")
+    digest_hour = int(raw_hour   if raw_hour   is not None else 7)
+    tz_offset   = int(raw_offset if raw_offset is not None else 0)
+    target_utc_hour = (digest_hour - tz_offset) % 24
+    return utc_hour == target_utc_hour
+
+
 def _upsert_run(user_id: str, run_date: str, **fields) -> str:
     """Create or update a pipeline_runs row; always return the run id."""
     existing = (
@@ -85,10 +107,19 @@ def main() -> None:
     run_date = os.environ.get("PIPELINE_RUN_DATE", date.today().isoformat())
     target_user_id = os.environ.get("PIPELINE_USER_ID")
     use_batch = os.environ.get("PIPELINE_USE_BATCH", "").lower() == "true"
+    skip_time_filter = os.environ.get("PIPELINE_SKIP_TIME_FILTER", "").lower() == "true"
+
+    utc_now = datetime.now(timezone.utc)
+    utc_hour = utc_now.hour
 
     log.info(
         "Pipeline starting",
-        extra={"run_date": run_date, "mode": "batch" if use_batch else "direct"},
+        extra={
+            "run_date": run_date,
+            "utc_hour": utc_hour,
+            "mode": "batch" if use_batch else "direct",
+            "skip_time_filter": skip_time_filter,
+        },
     )
 
     # ── Shared fetch (runs once, cached for the day) ──────────────────────────
@@ -98,20 +129,33 @@ def main() -> None:
         extra={"run_date": run_date, "papers_fetched": len(papers)},
     )
 
-    # ── Load active users ─────────────────────────────────────────────────────
-    users = get_active_users(target_user_id)
-    if target_user_id:
+    # ── Load active users then apply per-user delivery-time filter ────────────
+    all_users = get_active_users(target_user_id)
+
+    if skip_time_filter:
+        users = all_users
         log.info(
-            "Single-user mode",
-            extra={"run_date": run_date, "target_user_id": target_user_id},
+            "Time filter skipped (manual dispatch) — processing all users",
+            extra={"run_date": run_date, "utc_hour": utc_hour, "user_count": len(users)},
         )
-    log.info(
-        "Processing users",
-        extra={"run_date": run_date, "user_count": len(users)},
-    )
+    else:
+        users = [u for u in all_users if _is_user_due(u, utc_hour)]
+        skipped = len(all_users) - len(users)
+        log.info(
+            "Time filter applied",
+            extra={
+                "run_date": run_date,
+                "utc_hour": utc_hour,
+                "users_due": len(users),
+                "users_skipped": skipped,
+            },
+        )
 
     if not users:
-        log.info("No active users — pipeline exiting.", extra={"run_date": run_date})
+        log.info(
+            "No users due at this hour — pipeline exiting.",
+            extra={"run_date": run_date, "utc_hour": utc_hour},
+        )
         return
 
     succeeded = 0

@@ -1,48 +1,121 @@
-# Daily AI Digest pipeline
+# AI Digest pipeline
 #
 # Required GitHub secrets:
-#   OPENAI_API_KEY          — shared across all users for GPT-4o-mini scoring
-#   SUPABASE_URL            — project URL, used to read user configs and write run results
-#   SUPABASE_SERVICE_ROLE_KEY — service role key, bypasses RLS for pipeline operations
+#   OPENAI_API_KEY            — shared across all users for GPT-4o-mini scoring
+#   SUPABASE_URL              — project URL  (e.g. https://xyz.supabase.co)
+#   SUPABASE_SERVICE_ROLE_KEY — service role key, bypasses RLS
 #
-# Notion tokens and database IDs are stored per-user in Supabase (user_configs table)
+# Notion tokens and database IDs are stored per-user in Supabase
 # and are NOT stored as GitHub secrets.
 #
-# Logging:
-#   The pipeline detects GITHUB_ACTIONS=true (set automatically by the runner)
-#   and switches to structured JSON output. Each log line is a self-contained
-#   JSON object with fields like run_date, user_id, papers_fetched, papers_passed,
-#   top_score, and error. You can filter the raw step log with:
+# How per-user scheduling works
+# ──────────────────────────────
+# The 'check' job runs at the top of every UTC hour. It takes ~15 seconds
+# and costs essentially nothing. It queries Supabase for users whose
+# stored digest_hour and timezone_offset map to the current UTC hour:
 #
-#     jq 'select(.level == "ERROR")'              # surface failures
-#     jq 'select(.message == "Pipeline complete") | {users_failed}'
-#     jq '[.papers_fetched, .papers_passed]'       # coverage ratio
+#   target_utc_hour = (digest_hour - timezone_offset) % 24
+#
+# If no users are due the workflow exits immediately — the heavy 'pipeline'
+# job never starts. If users are due, the 'pipeline' job starts and only
+# processes those users.
+#
+# Logging:
+#   pipeline.py detects GITHUB_ACTIONS=true and emits structured JSON.
+#   Filter the raw step log with jq, e.g.:
+#     jq 'select(.level == "ERROR")'
+#     jq 'select(.message == "Pipeline complete") | {users_succeeded, users_failed}'
 
-name: Daily Pipeline
+name: Pipeline
 
 on:
   schedule:
-    - cron: "0 5 * * *"   # 05:00 UTC — digest ready before local 7am in all timezones
+    - cron: "0 * * * *"   # top of every UTC hour; 'check' job gates the rest
   workflow_dispatch:
     inputs:
       user_id:
-        description: "Optional user_id to process"
+        description: "Optional: process only this user_id"
         required: false
         type: string
       run_date:
-        description: "Optional run date (YYYY-MM-DD)"
+        description: "Optional: run date override (YYYY-MM-DD)"
         required: false
         type: string
 
 concurrency:
-  group: daily-pipeline
-  cancel-in-progress: false  # never cancel a run in progress; let it finish
+  # One scheduled run at a time; manual dispatches get their own group so
+  # they never block or get blocked by the scheduled job.
+  group: pipeline-${{ github.event_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
+# ── Job 1: fast gate — check if any users are due right now ──────────────────
+#
+# Uses curl + jq (pre-installed on ubuntu-latest). No Python, no pip.
+# Exits in ~15 seconds. Only sets users_due > 0 when work is needed.
+# On workflow_dispatch the check is skipped — all users (or the specified
+# one) are processed immediately.
+
 jobs:
-  run-pipeline:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      users_due: ${{ steps.count.outputs.users_due }}
+
+    steps:
+      - name: Count users due at this UTC hour
+        id: count
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          # Manual dispatches always proceed — skip the time check.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "Manual dispatch — skipping time filter"
+            echo "users_due=forced" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Current UTC hour as a plain integer (no leading zero).
+          UTC_HOUR=$(date -u +%-H)
+          echo "Current UTC hour: $UTC_HOUR"
+
+          # Fetch all active users that have Notion connected.
+          # Only the two scheduling fields are needed — keep the payload small.
+          RESPONSE=$(curl -sf \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            "${SUPABASE_URL}/rest/v1/user_configs?select=digest_hour,timezone_offset&active=eq.true&notion_connected=eq.true")
+
+          if [[ $? -ne 0 ]]; then
+            echo "Supabase query failed — letting pipeline run to surface the error"
+            echo "users_due=fallback" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Count users whose (digest_hour - timezone_offset) % 24 == UTC_HOUR.
+          # The double-mod ((x % 24) + 24) % 24 keeps the result positive even
+          # when digest_hour < timezone_offset (e.g. 1am UTC+8 → 17:00 UTC).
+          COUNT=$(echo "$RESPONSE" | jq --argjson h "$UTC_HOUR" \
+            '[.[] | select(
+               (((.digest_hour // 7) - (.timezone_offset // 0)) % 24 + 24) % 24
+               == $h
+             )] | length')
+
+          echo "Users due at UTC ${UTC_HOUR}:00 → ${COUNT}"
+          echo "users_due=${COUNT}" >> "$GITHUB_OUTPUT"
+
+# ── Job 2: full pipeline — only runs when users are actually due ──────────────
+
+  pipeline:
+    needs: check
+    # Run when check found due users (numeric > 0) OR was forced/fallback.
+    if: >-
+      needs.check.outputs.users_due != '0' &&
+      needs.check.outputs.users_due != ''
     runs-on: ubuntu-latest
 
     steps:
@@ -73,8 +146,11 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PIPELINE_USER_ID: ${{ github.event.inputs.user_id }}
           PIPELINE_RUN_DATE: ${{ github.event.inputs.run_date }}
-          # Use the Batch API (50% cost) for scheduled runs only.
-          # workflow_dispatch covers both the "Run now" button and manual
-          # GitHub Actions triggers — both need a fast synchronous response.
+          # Scheduled runs use the Batch API (50% cost, ~minutes latency).
+          # Manual dispatches use direct calls for an immediate response.
           PIPELINE_USE_BATCH: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
+          # Manual dispatches skip the per-user time filter — run everyone now.
+          # Scheduled runs apply it — check job already confirmed users are due,
+          # but pipeline.py re-checks to handle edge cases (e.g. concurrent runs).
+          PIPELINE_SKIP_TIME_FILTER: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
         run: python pipeline.py

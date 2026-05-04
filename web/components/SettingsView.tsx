@@ -58,6 +58,14 @@ function formatHour(h: number): string {
   return `${h - 12}:00 PM`;
 }
 
+function computeUtcHour(digestHour: number, timezoneOffset: number): number {
+  return ((digestHour - timezoneOffset) % 24 + 24) % 24;
+}
+
+function padHour(h: number): string {
+  return String(h).padStart(2, "0") + ":00";
+}
+
 // ── shared primitives ─────────────────────────────────────────────────────────
 
 function Skeleton({ className }: { className: string }) {
@@ -467,6 +475,21 @@ export default function SettingsView() {
                 ))}
               </select>
             </div>
+
+            {/* Live UTC delivery-time hint */}
+            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-indigo-400 shrink-0">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
+              </svg>
+              <p className="text-xs text-indigo-700">
+                Digest will be delivered at{" "}
+                <span className="font-semibold">
+                  {padHour(computeUtcHour(digestHour, timezoneOffset))} UTC
+                </span>
+                {" "}each day
+              </p>
+            </div>
+
             <div className="pt-1">
               <SaveButton loading={savingDelivery} onClick={saveDelivery} label="Save delivery settings" />
             </div>
