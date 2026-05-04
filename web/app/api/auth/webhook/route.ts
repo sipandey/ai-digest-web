@@ -87,15 +87,19 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── Brand-new user — insert ────────────────────────────────────────────────
+  // ── Brand-new user — upsert (handles race condition where page-load already
+  // created a stub row with clerk_id before this webhook arrived) ───────────────
   const { data: user, error: userError } = await supabaseAdmin
     .from("users")
-    .insert({ clerk_id: clerkId, email: primaryEmail ?? null, name })
+    .upsert(
+      { clerk_id: clerkId, email: primaryEmail ?? null, name },
+      { onConflict: "clerk_id" },
+    )
     .select("id")
     .single();
 
   if (userError) {
-    console.error("Failed to insert user:", userError);
+    console.error("Failed to upsert user:", userError);
     return NextResponse.json(
       { error: "Failed to create user" },
       { status: 500 }
@@ -104,10 +108,10 @@ export async function POST(req: Request) {
 
   const { error: configError } = await supabaseAdmin
     .from("user_configs")
-    .insert({ user_id: user.id });
+    .upsert({ user_id: user.id }, { onConflict: "user_id" });
 
   if (configError) {
-    console.error("Failed to insert user_config:", configError);
+    console.error("Failed to upsert user_config:", configError);
     return NextResponse.json(
       { error: "Failed to create user config" },
       { status: 500 }

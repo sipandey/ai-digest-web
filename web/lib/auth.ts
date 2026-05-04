@@ -31,6 +31,22 @@ export async function getAuthUserId(): Promise<string | null> {
         .eq("clerk_id", clerkId)
         .maybeSingle();
       if (data?.id) return data.id;
+
+      // Webhook race condition: Clerk session exists but the DB row hasn't been
+      // created yet (webhook is async and may fire seconds after redirect).
+      // Upsert a minimal row so the user isn't bounced back to the landing page.
+      const { data: newUser } = await supabaseAdmin
+        .from("users")
+        .upsert({ clerk_id: clerkId }, { onConflict: "clerk_id" })
+        .select("id")
+        .single();
+      if (newUser?.id) {
+        // Ensure a config row exists so downstream queries don't error
+        await supabaseAdmin
+          .from("user_configs")
+          .upsert({ user_id: newUser.id }, { onConflict: "user_id" });
+        return newUser.id;
+      }
     }
   } catch {
     // auth() can throw in middleware contexts; fall through to cookie check

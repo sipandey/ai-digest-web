@@ -500,7 +500,7 @@ function PrimaryButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex-1 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-30 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+      className="flex-1 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-30 text-white font-semibold py-3 px-3 rounded-xl text-sm transition-colors"
     >
       {children}
     </button>
