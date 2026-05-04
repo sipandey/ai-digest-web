@@ -32,7 +32,13 @@ function b64urlEncode(data: ArrayBuffer | string): string {
 }
 
 function b64urlDecode(s: string): Uint8Array {
-  return new Uint8Array(Buffer.from(s, "base64url"));
+  // Buffer.from().buffer is typed as ArrayBufferLike (includes SharedArrayBuffer).
+  // crypto.subtle APIs require a plain ArrayBuffer, so copy into a fresh Uint8Array
+  // backed by a new ArrayBuffer that TypeScript can verify is not shared.
+  const buf = Buffer.from(s, "base64url");
+  const out = new Uint8Array(buf.length);
+  out.set(buf);
+  return out;
 }
 
 // ── public API ────────────────────────────────────────────────────────────────
