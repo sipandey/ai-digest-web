@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from datetime import date, timedelta
 from typing import Optional
 
@@ -16,6 +17,7 @@ from pipeline_config import (
     WEEKDAY_WINDOW_DAYS,
     WEEKEND_WINDOW_DAYS,
     KEYWORD_GROUPS,
+    FETCH_CONCURRENT_RETRY_DELAY_SECONDS,
 )
 
 log = logging.getLogger(__name__)
@@ -68,6 +70,31 @@ def fetch_papers(run_date: str) -> list[dict]:
     if cached.data:
         log.info("Cache hit: %d papers for %s", len(cached.data), run_date)
         return cached.data
+
+    # Sleep briefly and recheck before crawling arXiv.
+    # If a concurrent pipeline (another user triggering at the same time)
+    # is already mid-crawl, it will have populated the cache by the time we
+    # wake up — saving a redundant full arXiv crawl.
+    if FETCH_CONCURRENT_RETRY_DELAY_SECONDS > 0:
+        log.info(
+            "Cache miss — waiting %ds in case a concurrent fetch is in progress (%s)",
+            FETCH_CONCURRENT_RETRY_DELAY_SECONDS,
+            run_date,
+        )
+        time.sleep(FETCH_CONCURRENT_RETRY_DELAY_SECONDS)
+        retry = (
+            supabase.table("papers_cache")
+            .select("*")
+            .eq("fetch_date", run_date)
+            .execute()
+        )
+        if retry.data:
+            log.info(
+                "Cache populated by concurrent fetch: %d papers for %s",
+                len(retry.data),
+                run_date,
+            )
+            return retry.data
 
     log.info("Cache miss — fetching from arXiv for %s", run_date)
 

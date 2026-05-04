@@ -29,6 +29,12 @@ ARXIV_CLIENT_PAGE_SIZE: int = 100
 ARXIV_CLIENT_DELAY_SECONDS: float = 3.0
 ARXIV_CLIENT_NUM_RETRIES: int = 3
 
+# Seconds to wait and re-check the cache after a miss before crawling arXiv.
+# If two user pipelines start simultaneously, one will populate the cache
+# while the other sleeps — the re-check then returns the cached data,
+# avoiding a redundant crawl. Set to 0 to disable.
+FETCH_CONCURRENT_RETRY_DELAY_SECONDS: int = 5
+
 # Publication-date window. Monday and the day after a holiday often have
 # weekend/holiday submissions — widen the window so they aren't missed.
 WEEKDAY_WINDOW_DAYS: int = 1   # Mon–Sat runs
