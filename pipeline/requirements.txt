@@ -2,5 +2,6 @@ arxiv
 openai
 notion-client
 python-dotenv
+python-json-logger
 requests
 supabase

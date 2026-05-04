@@ -7,6 +7,16 @@
 #
 # Notion tokens and database IDs are stored per-user in Supabase (user_configs table)
 # and are NOT stored as GitHub secrets.
+#
+# Logging:
+#   The pipeline detects GITHUB_ACTIONS=true (set automatically by the runner)
+#   and switches to structured JSON output. Each log line is a self-contained
+#   JSON object with fields like run_date, user_id, papers_fetched, papers_passed,
+#   top_score, and error. You can filter the raw step log with:
+#
+#     jq 'select(.level == "ERROR")'              # surface failures
+#     jq 'select(.message == "Pipeline complete") | {users_failed}'
+#     jq '[.papers_fetched, .papers_passed]'       # coverage ratio
 
 name: Daily Pipeline
 
