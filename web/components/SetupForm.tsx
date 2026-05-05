@@ -12,6 +12,7 @@ type ExperienceLevel =
   | "ml_engineer";
 
 type Step = "notion" | "profile" | "schedule" | "done";
+type GuideSection = "integration" | "database" | "share" | null;
 
 type FormState = {
   notionToken: string;
@@ -86,6 +87,8 @@ export default function SetupForm() {
     timezoneOffset: 0,
     email: "",
   });
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideSection, setGuideSection] = useState<GuideSection>(null);
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "testing" | "success" | "error"
   >("idle");
@@ -227,6 +230,124 @@ export default function SetupForm() {
                 </p>
               </div>
 
+              {/* ── Setup guide ──────────────────────────────────────────────── */}
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 overflow-hidden">
+                <button
+                  onClick={() => setGuideOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-indigo-700 hover:bg-indigo-50 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
+                    </svg>
+                    How to get your token and database ID
+                  </span>
+                  <svg
+                    className={`w-4 h-4 shrink-0 transition-transform ${guideOpen ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {guideOpen && (
+                  <div className="border-t border-indigo-100 px-4 pb-4 pt-3 space-y-3">
+                    {/* Section tabs */}
+                    <div className="flex gap-1.5 flex-wrap">
+                      {(["integration", "database", "share"] as GuideSection[]).map((s, i) => (
+                        <button
+                          key={s!}
+                          onClick={() => setGuideSection(guideSection === s ? null : s)}
+                          className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${
+                            guideSection === s
+                              ? "bg-indigo-600 text-white border-indigo-600"
+                              : "bg-white text-indigo-700 border-indigo-200 hover:border-indigo-400"
+                          }`}
+                        >
+                          {i + 1}. {s === "integration" ? "Create integration" : s === "database" ? "Create database" : "Share with integration"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Step 1 — Create integration */}
+                    {guideSection === "integration" && (
+                      <div className="space-y-2 text-xs text-gray-700">
+                        <p className="font-semibold text-gray-800">Create a Notion integration</p>
+                        <ol className="space-y-1.5 list-none">
+                          {[
+                            <>Go to <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-medium">notion.so/my-integrations</a></>,
+                            <>Click <span className="font-medium">"New integration"</span></>,
+                            <>Give it a name (e.g. <span className="font-mono bg-white border border-gray-200 px-1 rounded">AI Digest</span>) and select your workspace</>,
+                            <>Under <span className="font-medium">Capabilities</span>, make sure <span className="font-medium">Read content</span> and <span className="font-medium">Insert content</span> are enabled</>,
+                            <>Click <span className="font-medium">"Save"</span>, then click <span className="font-medium">"Show"</span> next to the <span className="font-medium">Internal Integration Secret</span> and copy the token — it starts with <span className="font-mono bg-white border border-gray-200 px-1 rounded">ntn_</span></>,
+                          ].map((text, i) => (
+                            <li key={i} className="flex gap-2">
+                              <span className="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-semibold text-[10px]">
+                                {i + 1}
+                              </span>
+                              <span>{text}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+
+                    {/* Step 2 — Create database */}
+                    {guideSection === "database" && (
+                      <div className="space-y-2 text-xs text-gray-700">
+                        <p className="font-semibold text-gray-800">Create a Notion database</p>
+                        <ol className="space-y-1.5 list-none">
+                          {[
+                            <>Open Notion and create a new page (or open an existing one)</>,
+                            <>Type <span className="font-mono bg-white border border-gray-200 px-1 rounded">/database</span> and choose <span className="font-medium">"Table — Full page"</span> from the menu</>,
+                            <>Give the database a name (e.g. <span className="font-mono bg-white border border-gray-200 px-1 rounded">AI Digest</span>)</>,
+                            <>Open the database as a full page — click its title to open it, then click <span className="font-medium">"Open as full page"</span> if needed</>,
+                            <>Copy the URL from your browser. It looks like: <span className="font-mono bg-white border border-gray-200 px-1 rounded break-all">notion.so/your-workspace/<b>abc123…</b>?v=…</span> — the bold part (32 hex characters) is your Database ID</>,
+                          ].map((text, i) => (
+                            <li key={i} className="flex gap-2">
+                              <span className="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-semibold text-[10px]">
+                                {i + 1}
+                              </span>
+                              <span>{text}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+
+                    {/* Step 3 — Share with integration */}
+                    {guideSection === "share" && (
+                      <div className="space-y-2 text-xs text-gray-700">
+                        <p className="font-semibold text-gray-800">Share your database with the integration</p>
+                        <p className="text-gray-500">
+                          Notion requires you to explicitly grant integrations access to each database.
+                        </p>
+                        <ol className="space-y-1.5 list-none">
+                          {[
+                            <>Open your database in Notion as a full page</>,
+                            <>Click the <span className="font-medium">"···"</span> (More) button in the top-right corner of the page</>,
+                            <>Click <span className="font-medium">"Connections"</span> (or <span className="font-medium">"Connect to"</span> in some Notion versions)</>,
+                            <>Find the integration you created (e.g. <span className="font-mono bg-white border border-gray-200 px-1 rounded">AI Digest</span>) and click <span className="font-medium">"Connect"</span></>,
+                            <>Confirm the prompt — the integration now has access to this database</>,
+                          ].map((text, i) => (
+                            <li key={i} className="flex gap-2">
+                              <span className="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-semibold text-[10px]">
+                                {i + 1}
+                              </span>
+                              <span>{text}</span>
+                            </li>
+                          ))}
+                        </ol>
+                        <p className="text-gray-400 pt-1">
+                          If the test below fails with "Database not found", this step is usually the cause.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Token + Database ID inputs */}
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -243,7 +364,7 @@ export default function SetupForm() {
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
                   />
                   <p className="text-xs text-gray-400 mt-1.5">
-                    Create one at{" "}
+                    Found at{" "}
                     <a
                       href="https://www.notion.so/my-integrations"
                       target="_blank"
@@ -251,7 +372,8 @@ export default function SetupForm() {
                       className="text-indigo-600 hover:underline"
                     >
                       notion.so/my-integrations
-                    </a>
+                    </a>{" "}
+                    → your integration → Internal Integration Secret
                   </p>
                 </div>
 
@@ -270,8 +392,8 @@ export default function SetupForm() {
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
                   />
                   <p className="text-xs text-gray-400 mt-1.5">
-                    Open your database in Notion → copy the ID from the URL:
-                    notion.so/<span className="font-semibold text-gray-600">THIS-PART</span>?v=…
+                    From your database URL:{" "}
+                    notion.so/…/<span className="font-semibold text-gray-600">32-char-id</span>?v=…
                   </p>
                 </div>
               </div>
