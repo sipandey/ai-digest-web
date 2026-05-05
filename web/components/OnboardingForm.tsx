@@ -4,6 +4,8 @@ import { useClerk } from "@clerk/nextjs";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
 type ExperienceLevel =
   | "beginner"
   | "developer_learning_ai"
@@ -16,38 +18,58 @@ type FormData = {
   topics: string[];
   notionToken: string;
   notionDatabaseId: string;
+  digestHour: number;
+  timezoneOffset: number;
 };
 
 type ConnectionStatus = "idle" | "testing" | "success" | "error";
 
+// ── Constants ──────────────────────────────────────────────────────────────────
+
 const EXPERIENCE_LEVELS: { value: ExperienceLevel; label: string; sub: string }[] = [
-  {
-    value: "beginner",
-    label: "Complete beginner",
-    sub: "Just starting with AI",
-  },
-  {
-    value: "developer_learning_ai",
-    label: "Developer learning AI",
-    sub: "Know how to code, learning ML concepts",
-  },
-  {
-    value: "practitioner",
-    label: "Practitioner",
-    sub: "Building AI systems regularly",
-  },
-  {
-    value: "ml_engineer",
-    label: "ML Engineer",
-    sub: "Training models, deep ML work",
-  },
+  { value: "beginner", label: "Complete beginner", sub: "Just starting with AI" },
+  { value: "developer_learning_ai", label: "Developer learning AI", sub: "Know how to code, learning ML concepts" },
+  { value: "practitioner", label: "Practitioner", sub: "Building AI systems regularly" },
+  { value: "ml_engineer", label: "ML Engineer", sub: "Training models, deep ML work" },
 ];
 
+// Match the full topic list from SetupForm
 const SUGGESTED_TOPICS = [
   "RAG and retrieval systems",
   "AI agents and automation",
   "LLM application development",
+  "Fine-tuning and RLHF",
+  "Multimodal AI",
+  "AI safety and alignment",
+  "Embeddings and vector search",
+  "Evaluation and benchmarking",
 ];
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const TIMEZONE_OFFSETS = Array.from({ length: 27 }, (_, i) => i - 12); // -12 … +14
+
+function fmtHour(h: number): string {
+  const period = h < 12 ? "AM" : "PM";
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}:00 ${period}`;
+}
+
+function fmtOffset(o: number): string {
+  if (o === 0) return "UTC±0";
+  return o > 0 ? `UTC+${o}` : `UTC${o}`;
+}
+
+function computeUtcHour(digestHour: number, timezoneOffset: number): number {
+  return ((digestHour - timezoneOffset) % 24 + 24) % 24;
+}
+
+function padHour(h: number): string {
+  return String(h).padStart(2, "0") + ":00";
+}
+
+const TOTAL_STEPS = 4;
+
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export default function OnboardingForm() {
   const router = useRouter();
@@ -60,34 +82,28 @@ export default function OnboardingForm() {
     topics: [],
     notionToken: "",
     notionDatabaseId: "",
+    digestHour: 7,
+    timezoneOffset: 0,
   });
 
   const [topicInput, setTopicInput] = useState("");
   const [topicError, setTopicError] = useState("");
-
-  const [connectionStatus, setConnectionStatus] =
-    useState<ConnectionStatus>("idle");
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [connectionError, setConnectionError] = useState("");
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  // ── validation ──────────────────────────────────────────────────────────────
+  // ── Validation ───────────────────────────────────────────────────────────────
   const step1Valid = form.profileDescription.trim().length >= 50;
   const step2Valid = form.topics.length >= 1;
   const step3Complete = connectionStatus === "success";
 
-  // ── topic helpers ────────────────────────────────────────────────────────────
+  // ── Topic helpers ─────────────────────────────────────────────────────────────
   function addTopic(raw: string) {
     const topic = raw.trim();
     if (!topic) return;
-    if (form.topics.includes(topic)) {
-      setTopicError("Already added.");
-      return;
-    }
-    if (form.topics.length >= 5) {
-      setTopicError("Maximum 5 topics.");
-      return;
-    }
+    if (form.topics.includes(topic)) { setTopicError("Already added."); return; }
+    if (form.topics.length >= 5) { setTopicError("Maximum 5 topics."); return; }
     setForm((f) => ({ ...f, topics: [...f.topics, topic] }));
     setTopicInput("");
     setTopicError("");
@@ -97,7 +113,7 @@ export default function OnboardingForm() {
     setForm((f) => ({ ...f, topics: f.topics.filter((t) => t !== topic) }));
   }
 
-  // ── async actions ────────────────────────────────────────────────────────────
+  // ── Async actions ─────────────────────────────────────────────────────────────
   async function testConnection() {
     setConnectionStatus("testing");
     setConnectionError("");
@@ -129,7 +145,15 @@ export default function OnboardingForm() {
       const res = await fetch("/api/users/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          profileDescription: form.profileDescription,
+          experienceLevel: form.experienceLevel,
+          topics: form.topics,
+          notionToken: form.notionToken,
+          notionDatabaseId: form.notionDatabaseId,
+          digestHour: form.digestHour,
+          timezoneOffset: form.timezoneOffset,
+        }),
       });
       if (res.ok) {
         router.push("/dashboard");
@@ -153,11 +177,11 @@ export default function OnboardingForm() {
     }
   }
 
-  // ── render ───────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#f4f4f8] flex flex-col items-center justify-start py-10 px-4">
 
-      {/* ── Header ────────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="w-full max-w-[480px] mb-8">
         <div className="flex items-center justify-between mb-5">
           <span className="text-sm font-bold text-[#14141e]">AI Digest</span>
@@ -172,30 +196,26 @@ export default function OnboardingForm() {
 
         {/* Progress bar */}
         <div className="flex gap-1.5 mb-3">
-          {[1, 2, 3].map((s) => (
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => (
             <div
-              key={s}
+              key={i}
               className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
-                s <= step ? "bg-indigo-500" : "bg-gray-200"
+                i + 1 <= step ? "bg-indigo-500" : "bg-gray-200"
               }`}
             />
           ))}
         </div>
-        <p className="text-xs text-gray-400">Step {step} of 3</p>
+        <p className="text-xs text-gray-400">Step {step} of {TOTAL_STEPS}</p>
       </div>
 
-      {/* ── Card ──────────────────────────────────────────────────────────── */}
+      {/* ── Card ────────────────────────────────────────────────────────────── */}
       <div className="w-full max-w-[480px] bg-white border border-gray-200 rounded-2xl p-7">
 
-        {/* ── STEP 1 ──────────────────────────────────────────────────────── */}
+        {/* ── STEP 1: Profile ─────────────────────────────────────────────── */}
         {step === 1 && (
           <>
-            <h1 className="text-xl font-bold text-[#14141e] mb-1">
-              What are you working on?
-            </h1>
-            <p className="text-sm text-gray-500 mb-7">
-              This shapes how we score papers for you.
-            </p>
+            <h1 className="text-xl font-bold text-[#14141e] mb-1">What are you working on?</h1>
+            <p className="text-sm text-gray-500 mb-7">This shapes how we score papers for you.</p>
 
             <div className="mb-6">
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
@@ -204,19 +224,11 @@ export default function OnboardingForm() {
               <textarea
                 rows={4}
                 value={form.profileDescription}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, profileDescription: e.target.value }))
-                }
+                onChange={(e) => setForm((f) => ({ ...f, profileDescription: e.target.value }))}
                 placeholder="e.g. I'm building a customer support chatbot using RAG. I have web development experience and I'm learning AI. I want papers I can build from immediately."
                 className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none resize-none transition-colors"
               />
-              <p
-                className={`text-xs mt-2 transition-colors ${
-                  form.profileDescription.trim().length >= 50
-                    ? "text-emerald-600"
-                    : "text-gray-300"
-                }`}
-              >
+              <p className={`text-xs mt-2 transition-colors ${form.profileDescription.trim().length >= 50 ? "text-emerald-600" : "text-gray-300"}`}>
                 {form.profileDescription.trim().length} / 50 minimum
               </p>
             </div>
@@ -235,169 +247,117 @@ export default function OnboardingForm() {
                         : "border-gray-200 hover:border-gray-300 bg-gray-50/50"
                     }`}
                   >
-                    <div
-                      className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
-                        form.experienceLevel === value
-                          ? "border-indigo-500"
-                          : "border-gray-300"
-                      }`}
-                    >
-                      {form.experienceLevel === value && (
-                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                      )}
+                    <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${form.experienceLevel === value ? "border-indigo-500" : "border-gray-300"}`}>
+                      {form.experienceLevel === value && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
                     </div>
                     <div>
                       <p className="text-sm font-medium text-[#14141e]">{label}</p>
                       <p className="text-xs text-gray-400">{sub}</p>
                     </div>
-                    <input
-                      type="radio"
-                      name="experienceLevel"
-                      value={value}
-                      checked={form.experienceLevel === value}
-                      onChange={() =>
-                        setForm((f) => ({ ...f, experienceLevel: value }))
-                      }
-                      className="sr-only"
-                    />
+                    <input type="radio" name="experienceLevel" value={value} checked={form.experienceLevel === value} onChange={() => setForm((f) => ({ ...f, experienceLevel: value }))} className="sr-only" />
                   </label>
                 ))}
               </div>
             </div>
 
-            <PrimaryButton onClick={() => setStep(2)} disabled={!step1Valid}>
-              Continue
-            </PrimaryButton>
+            <PrimaryButton onClick={() => setStep(2)} disabled={!step1Valid}>Continue</PrimaryButton>
           </>
         )}
 
-        {/* ── STEP 2 ──────────────────────────────────────────────────────── */}
+        {/* ── STEP 2: Topics ───────────────────────────────────────────────── */}
         {step === 2 && (
           <>
-            <h1 className="text-xl font-bold text-[#14141e] mb-1">
-              What topics interest you?
-            </h1>
-            <p className="text-sm text-gray-500 mb-7">
-              Add up to 5 topics. Specific beats generic.
-            </p>
+            <h1 className="text-xl font-bold text-[#14141e] mb-1">What topics interest you?</h1>
+            <p className="text-sm text-gray-500 mb-7">Pick at least one. Specific beats generic.</p>
 
-            <div className="flex gap-2 mb-1.5">
-              <input
-                type="text"
-                value={topicInput}
-                onChange={(e) => {
-                  setTopicInput(e.target.value);
-                  setTopicError("");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addTopic(topicInput);
-                  }
-                }}
-                placeholder="e.g. RAG for customer support"
-                className="flex-1 bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
-              />
-              <button
-                onClick={() => addTopic(topicInput)}
-                disabled={form.topics.length >= 5}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors shrink-0"
-              >
-                Add
-              </button>
-            </div>
-
-            {topicError && (
-              <p className="text-xs text-red-500 mt-1">{topicError}</p>
-            )}
-            <p className="text-xs text-gray-400 mt-1 mb-5">
-              {form.topics.length} / 5 topics added
-            </p>
-
-            {form.topics.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-6">
-                {form.topics.map((t) => (
-                  <span
+            {/* Chip picker (matches SetupForm) */}
+            <div className="mb-5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Quick-select</p>
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTED_TOPICS.map((t) => (
+                  <button
                     key={t}
-                    className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm px-3 py-1.5 rounded-full"
+                    onClick={() => {
+                      if (form.topics.includes(t)) {
+                        setForm((f) => ({ ...f, topics: f.topics.filter((x) => x !== t) }));
+                      } else if (form.topics.length < 5) {
+                        setForm((f) => ({ ...f, topics: [...f.topics, t] }));
+                      }
+                    }}
+                    className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${
+                      form.topics.includes(t)
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                    }`}
                   >
                     {t}
-                    <button
-                      onClick={() => removeTopic(t)}
-                      aria-label={`Remove ${t}`}
-                      className="text-indigo-400 hover:text-indigo-700 leading-none ml-0.5"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div className="mb-8">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                Suggestions
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {SUGGESTED_TOPICS.filter(
-                  (s) => !form.topics.includes(s)
-                ).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => addTopic(s)}
-                    disabled={form.topics.length >= 5}
-                    className="text-sm text-gray-500 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-40 px-3 py-1.5 rounded-full border border-gray-200 hover:border-indigo-200 transition-colors"
-                  >
-                    + {s}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="flex gap-3">
+            {/* Custom topic input */}
+            <div className="mb-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Or type your own</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={topicInput}
+                  onChange={(e) => { setTopicInput(e.target.value); setTopicError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopic(topicInput); } }}
+                  placeholder="e.g. RAG for customer support"
+                  disabled={form.topics.length >= 5}
+                  className="flex-1 bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none disabled:opacity-40 transition-colors"
+                />
+                <button
+                  onClick={() => addTopic(topicInput)}
+                  disabled={form.topics.length >= 5}
+                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors shrink-0"
+                >
+                  Add
+                </button>
+              </div>
+              {topicError && <p className="text-xs text-red-500 mt-1">{topicError}</p>}
+              {form.topics.length >= 5 && <p className="text-xs text-amber-600 mt-1">5 topics maximum</p>}
+            </div>
+
+            {/* Selected topics */}
+            {form.topics.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-4 mb-6">
+                {form.topics.map((t) => (
+                  <span key={t} className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm px-3 py-1.5 rounded-full">
+                    {t}
+                    <button onClick={() => removeTopic(t)} aria-label={`Remove ${t}`} className="text-indigo-400 hover:text-indigo-700 leading-none ml-0.5">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-6">
               <GhostButton onClick={() => setStep(1)}>Back</GhostButton>
-              <PrimaryButton onClick={() => setStep(3)} disabled={!step2Valid}>
-                Continue
-              </PrimaryButton>
+              <PrimaryButton onClick={() => setStep(3)} disabled={!step2Valid}>Continue</PrimaryButton>
             </div>
           </>
         )}
 
-        {/* ── STEP 3 ──────────────────────────────────────────────────────── */}
+        {/* ── STEP 3: Connect Notion ───────────────────────────────────────── */}
         {step === 3 && (
           <>
-            <h1 className="text-xl font-bold text-[#14141e] mb-1">
-              Connect Notion
-            </h1>
-            <p className="text-sm text-gray-500 mb-7">
-              Your digest will be delivered here every morning.
-            </p>
+            <h1 className="text-xl font-bold text-[#14141e] mb-1">Connect Notion</h1>
+            <p className="text-sm text-gray-500 mb-7">Your digest will be delivered here every morning.</p>
 
             <ol className="space-y-2 mb-7">
               {[
-                <>
-                  Go to{" "}
-                  <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
-                    notion.so/my-integrations
-                  </span>
-                </>,
-                <>Click &quot;New integration&quot;</>,
-                <>Name it &quot;AI Digest&quot; and save</>,
-                <>Copy the Internal Integration Token</>,
-                <>Create a new Notion database (full page)</>,
-                <>
-                  Open the database →{" "}
-                  <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
-                    ...
-                  </span>{" "}
-                  → Connections → add AI Digest
-                </>,
-                <>Copy the Database ID from the URL</>,
+                <>Go to <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-medium">notion.so/my-integrations</a></>,
+                <>Click <strong>&quot;New integration&quot;</strong> → name it &quot;AI Digest&quot; → save</>,
+                <>Enable <strong>Read content</strong>, <strong>Insert content</strong>, and <strong>Update content</strong> capabilities</>,
+                <>Copy the <strong>Internal Integration Secret</strong> (starts with <code className="bg-gray-100 px-1 rounded text-xs">ntn_</code>)</>,
+                <>Create a new Notion database (full page) — or use an existing one</>,
+                <>Open the database → <code className="bg-gray-100 px-1 rounded text-xs">···</code> → <strong>Connections</strong> → add AI Digest</>,
+                <>Copy the <strong>Database ID</strong> from the URL (32-character hex string)</>,
               ].map((text, i) => (
                 <li key={i} className="flex gap-3">
-                  <span className="text-indigo-500 font-bold text-xs shrink-0 w-4 text-right mt-0.5">
-                    {i + 1}.
-                  </span>
+                  <span className="text-indigo-500 font-bold text-xs shrink-0 w-4 text-right mt-0.5">{i + 1}.</span>
                   <span className="text-sm text-gray-500">{text}</span>
                 </li>
               ))}
@@ -405,31 +365,21 @@ export default function OnboardingForm() {
 
             <div className="space-y-3 mb-5">
               <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Integration Token
-                </label>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Integration Token</label>
                 <input
                   type="password"
                   value={form.notionToken}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, notionToken: e.target.value }));
-                    setConnectionStatus("idle");
-                  }}
+                  onChange={(e) => { setForm((f) => ({ ...f, notionToken: e.target.value })); setConnectionStatus("idle"); }}
                   placeholder="ntn_xxxxxxxxxxxx"
                   className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm font-mono text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Database ID
-                </label>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Database ID</label>
                 <input
                   type="text"
                   value={form.notionDatabaseId}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, notionDatabaseId: e.target.value }));
-                    setConnectionStatus("idle");
-                  }}
+                  onChange={(e) => { setForm((f) => ({ ...f, notionDatabaseId: e.target.value })); setConnectionStatus("idle"); }}
                   placeholder="32 character ID from the URL"
                   className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm font-mono text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
                 />
@@ -438,26 +388,16 @@ export default function OnboardingForm() {
 
             <button
               onClick={testConnection}
-              disabled={
-                !form.notionToken ||
-                !form.notionDatabaseId ||
-                connectionStatus === "testing"
-              }
+              disabled={!form.notionToken || !form.notionDatabaseId || connectionStatus === "testing"}
               className="w-full border border-indigo-400 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 font-medium py-3 rounded-xl text-sm mb-4 transition-colors"
             >
               {connectionStatus === "testing" ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Spinner /> Testing connection…
-                </span>
-              ) : (
-                "Test connection"
-              )}
+                <span className="flex items-center justify-center gap-2"><Spinner /> Testing connection…</span>
+              ) : "Test connection"}
             </button>
 
             {connectionStatus === "success" && (
-              <p className="text-sm text-emerald-600 flex items-center gap-2 mb-4">
-                <span>✓</span> Connected successfully
-              </p>
+              <p className="text-sm text-emerald-600 flex items-center gap-2 mb-4"><span>✓</span> Connected successfully</p>
             )}
             {connectionStatus === "error" && (
               <p className="text-sm text-red-500 mb-4">{connectionError}</p>
@@ -465,17 +405,63 @@ export default function OnboardingForm() {
 
             <div className="flex gap-3 mt-2">
               <GhostButton onClick={() => setStep(2)}>Back</GhostButton>
-              <PrimaryButton
-                onClick={completeSetup}
-                disabled={!step3Complete || saving}
-              >
+              <PrimaryButton onClick={() => setStep(4)} disabled={!step3Complete}>Continue</PrimaryButton>
+            </div>
+          </>
+        )}
+
+        {/* ── STEP 4: Delivery schedule ────────────────────────────────────── */}
+        {step === 4 && (
+          <>
+            <h1 className="text-xl font-bold text-[#14141e] mb-1">When should we deliver?</h1>
+            <p className="text-sm text-gray-500 mb-7">You can change this any time in settings.</p>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Delivery time</label>
+                <select
+                  value={form.digestHour}
+                  onChange={(e) => setForm((f) => ({ ...f, digestHour: Number(e.target.value) }))}
+                  className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] focus:outline-none transition-colors"
+                >
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>{fmtHour(h)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Timezone</label>
+                <select
+                  value={form.timezoneOffset}
+                  onChange={(e) => setForm((f) => ({ ...f, timezoneOffset: Number(e.target.value) }))}
+                  className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] focus:outline-none transition-colors"
+                >
+                  {TIMEZONE_OFFSETS.map((o) => (
+                    <option key={o} value={o}>{fmtOffset(o)}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Live UTC delivery hint */}
+              <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-indigo-400 shrink-0">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
+                </svg>
+                <p className="text-xs text-indigo-700">
+                  Digest will run at{" "}
+                  <span className="font-semibold">{padHour(computeUtcHour(form.digestHour, form.timezoneOffset))} UTC</span>
+                  {" "}each day
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <GhostButton onClick={() => setStep(3)}>Back</GhostButton>
+              <PrimaryButton onClick={completeSetup} disabled={saving}>
                 {saving ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Spinner /> Saving…
-                  </span>
-                ) : (
-                  "Complete setup"
-                )}
+                  <span className="flex items-center justify-center gap-2"><Spinner /> Saving…</span>
+                ) : "Complete setup"}
               </PrimaryButton>
             </div>
           </>
@@ -485,17 +471,9 @@ export default function OnboardingForm() {
   );
 }
 
-// ── shared primitives ──────────────────────────────────────────────────────────
+// ── Shared primitives ──────────────────────────────────────────────────────────
 
-function PrimaryButton({
-  children,
-  onClick,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-}) {
+function PrimaryButton({ children, onClick, disabled }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
   return (
     <button
       onClick={onClick}
@@ -507,13 +485,7 @@ function PrimaryButton({
   );
 }
 
-function GhostButton({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-}) {
+function GhostButton({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -526,25 +498,9 @@ function GhostButton({
 
 function Spinner() {
   return (
-    <svg
-      className="animate-spin h-4 w-4"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
+    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
   );
 }

@@ -11,10 +11,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { createSessionToken, buildSetCookieHeader } from "@/lib/session";
+import { rateLimit } from "@/lib/ratelimit";
 
 const NOTION_VERSION = "2022-06-28";
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const { allowed } = rateLimit(`guest-verify:${ip}`, { limit: 10, windowMs: 60_000 });
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests — please wait a minute." },
+      { status: 429 },
+    );
+  }
+
   let body: { notionToken?: string };
   try {
     body = await req.json();

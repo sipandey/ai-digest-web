@@ -23,9 +23,10 @@ type Config = {
 };
 
 type UserProfile = {
-  email: string;
+  email: string | null;
   name: string | null;
   tier: "free" | "pro";
+  authMethod: "clerk" | "notion";
 };
 
 type Toast = { message: string; type: "success" | "error" };
@@ -40,16 +41,14 @@ const EXPERIENCE_LEVELS: { value: ExperienceLevel; label: string; sub: string }[
   { value: "ml_engineer", label: "ML Engineer", sub: "Training models, deep ML work" },
 ];
 
-const TIMEZONES: { label: string; offset: number }[] = [
-  { label: "UTC-8 (Pacific)", offset: -8 },
-  { label: "UTC-5 (Eastern)", offset: -5 },
-  { label: "UTC+0 (London)", offset: 0 },
-  { label: "UTC+1 (Paris)", offset: 1 },
-  { label: "UTC+3 (Moscow)", offset: 3 },
-  { label: "UTC+5 (India ~)", offset: 5 },
-  { label: "UTC+8 (Singapore)", offset: 8 },
-  { label: "UTC+9 (Tokyo)", offset: 9 },
-];
+// Full UTC offset range matching the SetupForm so users can always see and
+// change whatever offset they configured during setup.
+const TIMEZONE_OFFSETS = Array.from({ length: 27 }, (_, i) => i - 12); // -12 … +14
+
+function fmtOffset(o: number): string {
+  if (o === 0) return "UTC±0";
+  return o > 0 ? `UTC+${o}` : `UTC${o}`;
+}
 
 function formatHour(h: number): string {
   if (h === 0) return "12:00 AM";
@@ -304,7 +303,19 @@ export default function SettingsView() {
 
   async function handleSignOut() {
     setSigningOut(true);
-    await signOut({ redirectUrl: "/" });
+    try {
+      if (userProfile?.authMethod === "notion") {
+        // Guest users have no Clerk session — clear the __digest_sid cookie via
+        // our own logout endpoint, then redirect to the landing page.
+        await fetch("/api/auth/logout", { method: "POST" });
+        window.location.href = "/";
+      } else {
+        // Clerk users: Clerk's signOut handles everything.
+        await signOut({ redirectUrl: "/" });
+      }
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   if (loading) {
@@ -470,8 +481,8 @@ export default function SettingsView() {
                 onChange={(e) => setTimezoneOffset(Number(e.target.value))}
                 className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] focus:outline-none transition-colors"
               >
-                {TIMEZONES.map(({ label, offset }) => (
-                  <option key={offset} value={offset}>{label}</option>
+                {TIMEZONE_OFFSETS.map((o) => (
+                  <option key={o} value={o}>{fmtOffset(o)}</option>
                 ))}
               </select>
             </div>

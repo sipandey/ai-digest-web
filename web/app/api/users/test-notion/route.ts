@@ -8,11 +8,21 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/ratelimit";
 
 const NOTION_API = "https://api.notion.com/v1";
 const NOTION_VERSION = "2022-06-28";
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const { allowed } = rateLimit(`test-notion:${ip}`, { limit: 10, windowMs: 60_000 });
+  if (!allowed) {
+    return NextResponse.json(
+      { success: false, error: "Too many requests — please wait a minute." },
+      { status: 429 },
+    );
+  }
+
   let notionToken: string;
   let notionDatabaseId: string;
 

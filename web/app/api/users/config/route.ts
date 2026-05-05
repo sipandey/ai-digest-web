@@ -2,6 +2,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getAuthUserId, resolveUserById } from "@/lib/auth";
 
+// ── Notion validation helper (mirrors /api/guest/setup) ──────────────────────
+
+const NOTION_VERSION = "2022-06-28";
+
+async function validateNotionCredentials(
+  token: string,
+  databaseId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Notion-Version": NOTION_VERSION,
+    };
+    const signal = AbortSignal.timeout(8000);
+
+    const meRes = await fetch("https://api.notion.com/v1/users/me", { headers, signal });
+    if (!meRes.ok) {
+      return { ok: false, error: "Invalid integration token — check your Notion integration secret." };
+    }
+
+    const cleanId = databaseId.replace(/-/g, "");
+    const dbRes = await fetch(`https://api.notion.com/v1/databases/${cleanId}`, { headers, signal });
+    if (dbRes.status === 404) {
+      return { ok: false, error: "Database not found — make sure you shared it with your integration." };
+    }
+    if (!dbRes.ok) {
+      return { ok: false, error: "Cannot access that Notion database. Check your credentials." };
+    }
+
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Could not reach Notion — please try again." };
+  }
+}
+
 // ── shared helper ─────────────────────────────────────────────────────────────
 
 async function saveUserConfig(userId: string, values: Record<string, unknown>) {
@@ -53,8 +88,25 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { notionToken, notionDatabaseId, topics, profileDescription, experienceLevel } =
-      body;
+    const {
+      notionToken,
+      notionDatabaseId,
+      topics,
+      profileDescription,
+      experienceLevel,
+      digestHour,
+      timezoneOffset,
+    } = body;
+
+    // Validate Notion credentials before persisting — identical logic to
+    // /api/guest/setup so we don't store credentials that won't work.
+    const check = await validateNotionCredentials(
+      String(notionToken ?? ""),
+      String(notionDatabaseId ?? ""),
+    );
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: 400 });
+    }
 
     const { data, error } = await saveUserConfig(userId, {
       notion_token: notionToken,
@@ -63,6 +115,8 @@ export async function POST(req: NextRequest) {
       topics,
       profile_description: profileDescription,
       experience_level: experienceLevel,
+      ...(typeof digestHour === "number" ? { digest_hour: digestHour } : {}),
+      ...(typeof timezoneOffset === "number" ? { timezone_offset: timezoneOffset } : {}),
     });
 
     if (error) {

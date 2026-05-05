@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS user_configs (
                                     "builder_relevance": true,
                                     "understandability": true,
                                     "real_world_grounding": true,
-                                    "novelty": true
+                                    "novelty_timing": true
                                   }',
   timezone_offset     integer     NOT NULL DEFAULT 0,
   digest_hour         integer     NOT NULL DEFAULT 7,
@@ -114,6 +114,7 @@ COMMENT ON TABLE pipeline_runs IS
 
 CREATE INDEX IF NOT EXISTS pipeline_runs_user_id_idx  ON pipeline_runs (user_id);
 CREATE INDEX IF NOT EXISTS pipeline_runs_run_date_idx ON pipeline_runs (run_date);
+CREATE UNIQUE INDEX IF NOT EXISTS pipeline_runs_user_date_key ON pipeline_runs (user_id, run_date);
 
 -- =============================================================================
 -- TABLE: papers_cache
