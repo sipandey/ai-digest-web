@@ -156,7 +156,7 @@ def _upsert_run(user_id: str, run_date: str, **fields) -> str:
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    run_date = os.environ.get("PIPELINE_RUN_DATE", date.today().isoformat())
+    run_date = os.environ.get("PIPELINE_RUN_DATE") or date.today().isoformat()
     target_user_id = os.environ.get("PIPELINE_USER_ID")
     use_batch = os.environ.get("PIPELINE_USE_BATCH", "").lower() == "true"
     skip_time_filter = os.environ.get("PIPELINE_SKIP_TIME_FILTER", "").lower() == "true"
