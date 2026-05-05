@@ -302,7 +302,7 @@ export default function SetupForm() {
                             <>Type <span className="font-mono bg-white border border-gray-200 px-1 rounded">/database</span> and choose <span className="font-medium">"Table — Full page"</span> from the menu</>,
                             <>Give the database a name (e.g. <span className="font-mono bg-white border border-gray-200 px-1 rounded">AI Digest</span>)</>,
                             <>Open the database as a full page — click its title to open it, then click <span className="font-medium">"Open as full page"</span> if needed</>,
-                            <>Copy the URL from your browser. It looks like: <span className="font-mono bg-white border border-gray-200 px-1 rounded break-all">notion.so/your-workspace/<b>abc123…</b>?v=…</span> — the bold part (32 hex characters) is your Database ID</>,
+                            <>Copy the URL from your browser. It looks like: <span className="font-mono bg-white border border-gray-200 px-1 rounded break-all">notion.so/<b>abc123…</b>?v=…</span> — the bold part (32 hex characters) is your Database ID</>,
                           ].map((text, i) => (
                             <li key={i} className="flex gap-2">
                               <span className="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-semibold text-[10px]">
@@ -393,7 +393,7 @@ export default function SetupForm() {
                   />
                   <p className="text-xs text-gray-400 mt-1.5">
                     From your database URL:{" "}
-                    notion.so/…/<span className="font-semibold text-gray-600">32-char-id</span>?v=…
+                    notion.so/<span className="font-semibold text-gray-600">32-char-id</span>?v=…
                   </p>
                 </div>
               </div>
