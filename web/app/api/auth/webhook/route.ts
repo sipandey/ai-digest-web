@@ -51,14 +51,23 @@ export async function POST(req: Request) {
     );
   }
 
-  // ── user.deleted — soft-delete so the pipeline stops running for them ────────
+  // ── user.deleted — hard-delete to honour right-to-erasure (GDPR/CCPA) ────────
+  // ON DELETE CASCADE on user_configs, pipeline_runs, user_delivered_papers,
+  // and paper_rankings_cache means a single DELETE removes all user data.
+  // This also fulfils the privacy policy promise: "all data is permanently
+  // deleted when you close your account."
   if (event.type === "user.deleted") {
     const clerkId = event.data.id;
     if (clerkId) {
-      await supabaseAdmin
+      const { error } = await supabaseAdmin
         .from("users")
-        .update({ active: false })
+        .delete()
         .eq("clerk_id", clerkId);
+      if (error) {
+        console.error("user.deleted — failed to delete user row:", error);
+        // Return 500 so Clerk retries the webhook delivery
+        return NextResponse.json({ error: "Failed to delete user" }, { status: 500 });
+      }
     }
     return NextResponse.json({ received: true });
   }

@@ -14,10 +14,9 @@ Implemented AES-256-GCM application-layer encryption for `notion_token` and `not
 
 ---
 
-### Legal-2. Privacy policy promises token deletion on account closure — code does not honour it
+### ~~Legal-2. Privacy policy promises token deletion on account closure — code does not honour it~~ ✅ Fixed
 **Files:** `web/app/privacy/page.tsx`, `web/app/api/auth/webhook/route.ts`
-The policy states: *"Your Notion integration token is deleted immediately upon account deletion."* The `user.deleted` webhook handler sets `users.active = false` and stops there. It does **not** delete the token or any user data. This creates specific legal liability beyond the general GDPR gap in L-3 — you are making an explicit, time-bound promise ("immediately") that the code breaks.
-**Fix:** Resolve L-3 first (hard-delete on `user.deleted`), then verify the privacy policy wording matches. See L-3 for the concrete SQL fix.
+`user.deleted` webhook now performs a hard `DELETE FROM users WHERE clerk_id = $1`. The existing `ON DELETE CASCADE` constraints on `user_configs`, `pipeline_runs`, `user_delivered_papers`, and `paper_rankings_cache` remove all associated data automatically. Privacy policy updated to accurately state that all account data — profile, credentials, preferences, run history, and delivered-paper records — is permanently deleted immediately on account closure. See also L-3 (resolved by the same fix).
 
 ---
 
@@ -178,11 +177,9 @@ No cap on total pipeline runs across all users. Viral growth or a multi-account 
 
 ---
 
-### L-3. `user.deleted` webhook does not purge user data (GDPR)
-**File:** `web/app/api/auth/webhook/route.ts`  
-Account deletion sets `users.active = false` but leaves all rows intact — `user_configs` (including Notion token), `pipeline_runs`, `user_delivered_papers`, `paper_rankings_cache`. This may not satisfy GDPR/CCPA right-to-erasure if a user deletes their Clerk account expecting their data to be removed.  
-**Note:** The privacy policy explicitly states *"Your Notion integration token is deleted immediately upon account deletion"* — fixing this is also required to make the policy truthful (see Legal-2).  
-**Fix:** On `user.deleted`, cascade-delete or anonymise all rows keyed on `user_id`. The foreign-key `ON DELETE CASCADE` constraints already exist — a hard `DELETE FROM users WHERE clerk_id = $1` will remove everything.
+### ~~L-3. `user.deleted` webhook does not purge user data (GDPR)~~ ✅ Fixed
+**File:** `web/app/api/auth/webhook/route.ts`
+Hard-delete on `user.deleted` now removes the `users` row and all cascaded child rows. See Legal-2 for full details.
 
 ---
 

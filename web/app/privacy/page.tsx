@@ -53,11 +53,17 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-base font-semibold text-[#14141e] mb-3">Data retention</h2>
+            <h2 className="text-base font-semibold text-[#14141e] mb-3">Data retention &amp; deletion</h2>
             <p>
-              Your account data is retained for as long as your account is active. You can request deletion
-              at any time by emailing us (see below). Your Notion integration token is deleted immediately
-              upon account deletion.
+              Your account data is retained for as long as your account is active. When you delete your
+              account (via Clerk account settings), <span className="font-medium text-[#14141e]">all
+              data associated with your account is permanently deleted</span> — including your profile,
+              Notion credentials, topic preferences, pipeline run history, and the record of papers
+              already delivered to you. This deletion is immediate and irreversible.
+            </p>
+            <p className="mt-3">
+              You can also request manual deletion at any time by contacting us (see below), and we will
+              remove your data within 30 days.
             </p>
           </section>
 
