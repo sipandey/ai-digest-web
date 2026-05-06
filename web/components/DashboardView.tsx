@@ -141,6 +141,7 @@ export default function DashboardView() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState("");
 
@@ -152,13 +153,22 @@ export default function DashboardView() {
           fetch("/api/users/runs"),
         ]);
 
+        // 404 = onboarding not completed → send to onboarding
         if (configRes.status === 404) {
           router.replace("/onboarding");
           return;
         }
 
+        // 5xx / network errors → show an error state, not a silent redirect
+        if (!configRes.ok) {
+          setLoadError("Could not load your dashboard. Please refresh the page.");
+          return;
+        }
+
         const configData = await configRes.json();
-        if (!configData.notion_connected) {
+
+        // No Notion connection yet → send to onboarding
+        if (!configData.notion_connected && !configData.config?.notion_connected) {
           router.replace("/onboarding");
           return;
         }
@@ -166,6 +176,8 @@ export default function DashboardView() {
         setConfig(configData.config ?? configData);
         setProfile(configData.profile ?? null);
         setRuns((await runsRes.json()).runs ?? []);
+      } catch {
+        setLoadError("Could not load your dashboard. Please refresh the page.");
       } finally {
         setLoading(false);
       }
@@ -220,6 +232,30 @@ export default function DashboardView() {
           <Skeleton className="h-7 w-48" />
           <Skeleton className="h-36 w-full" />
           <Skeleton className="h-56 w-full" />
+        </div>
+        <BottomNav active="dashboard" />
+      </div>
+    );
+  }
+
+  // ── error ──────────────────────────────────────────────────────────────────
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-[#f4f4f8] flex flex-col items-center justify-center px-4">
+        <div className="bg-white border border-red-200 rounded-2xl p-8 max-w-sm text-center space-y-4">
+          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+            <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium text-[#14141e]">{loadError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-sm text-indigo-600 hover:text-indigo-500 font-medium"
+          >
+            Refresh
+          </button>
         </div>
         <BottomNav active="dashboard" />
       </div>

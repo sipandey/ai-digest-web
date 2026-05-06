@@ -3,13 +3,13 @@ import { NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { supabaseAdmin } from "@/lib/supabase";
 
-type ClerkUserCreatedEvent = {
+type ClerkEvent = {
   type: string;
   data: {
     id: string;
-    email_addresses: { email_address: string; primary: boolean }[];
-    first_name: string | null;
-    last_name: string | null;
+    email_addresses?: { email_address: string; primary: boolean }[];
+    first_name?: string | null;
+    last_name?: string | null;
   };
 };
 
@@ -37,13 +37,13 @@ export async function POST(req: Request) {
   const body = await req.text();
   const wh = new Webhook(secret);
 
-  let event: ClerkUserCreatedEvent;
+  let event: ClerkEvent;
   try {
     event = wh.verify(body, {
       "svix-id": svixId,
       "svix-timestamp": svixTimestamp,
       "svix-signature": svixSignature,
-    }) as ClerkUserCreatedEvent;
+    }) as ClerkEvent;
   } catch {
     return NextResponse.json(
       { error: "Invalid webhook signature" },
@@ -51,11 +51,23 @@ export async function POST(req: Request) {
     );
   }
 
+  // ── user.deleted — soft-delete so the pipeline stops running for them ────────
+  if (event.type === "user.deleted") {
+    const clerkId = event.data.id;
+    if (clerkId) {
+      await supabaseAdmin
+        .from("users")
+        .update({ active: false })
+        .eq("clerk_id", clerkId);
+    }
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type !== "user.created") {
     return NextResponse.json({ received: true });
   }
 
-  const { id: clerkId, email_addresses, first_name, last_name } = event.data;
+  const { id: clerkId, email_addresses = [], first_name, last_name } = event.data;
 
   const primaryEmail =
     email_addresses.find((e) => e.primary)?.email_address ??

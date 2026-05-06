@@ -278,7 +278,7 @@ export default function SetupForm() {
                             <>Go to <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-medium">notion.so/my-integrations</a></>,
                             <>Click <span className="font-medium">"New integration"</span></>,
                             <>Give it a name (e.g. <span className="font-mono bg-white border border-gray-200 px-1 rounded">AI Digest</span>) and select your workspace</>,
-                            <>Under <span className="font-medium">Capabilities</span>, make sure <span className="font-medium">Read content</span> and <span className="font-medium">Insert content</span> are enabled</>,
+                            <>Under <span className="font-medium">Capabilities</span>, enable <span className="font-medium">Read content</span>, <span className="font-medium">Insert content</span>, and <span className="font-medium">Update content</span> — all three are required</>,
                             <>Click <span className="font-medium">"Save"</span>, then click <span className="font-medium">"Show"</span> next to the <span className="font-medium">Internal Integration Secret</span> and copy the token — it starts with <span className="font-mono bg-white border border-gray-200 px-1 rounded">ntn_</span></>,
                           ].map((text, i) => (
                             <li key={i} className="flex gap-2">

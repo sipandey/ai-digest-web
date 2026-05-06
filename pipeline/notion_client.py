@@ -17,6 +17,10 @@ BLOCK_LIMIT = 100
 
 
 def _rich_text(content: str) -> list[dict]:
+    # Notion enforces a hard 2000-character limit per rich_text content object.
+    # Truncate with an ellipsis so long abstracts or summaries never cause a 400.
+    if len(content) > 2000:
+        content = content[:1997] + "…"
     return [{"type": "text", "text": {"content": content}}]
 
 
