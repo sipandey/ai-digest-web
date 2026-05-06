@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Digest — Pipeline Flow</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: #0f1117;
+      color: #e6edf3;
+      padding: 32px 24px 64px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #f0f6fc;
+      letter-spacing: -0.3px;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      color: #8b949e;
+      margin-bottom: 32px;
+    }
+
+    /* ── legend ── */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 24px;
+      margin-bottom: 32px;
+      padding: 16px 20px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #c9d1d9;
+    }
+    .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* ── diagram container ── */
+    .diagram-wrap {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 24px;
+      overflow-x: auto;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+
+    /* ── section headers ── */
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #8b949e;
+      margin: 28px 0 8px;
+    }
+
+    /* ── notes ── */
+    .notes {
+      margin-top: 32px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+    .note-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .note-card h3 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #8b949e;
+      margin-bottom: 10px;
+    }
+    .note-card ul {
+      list-style: none;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      color: #c9d1d9;
+    }
+    .note-card ul li::before {
+      content: "→ ";
+      color: #58a6ff;
+    }
+    .highlight { color: #79c0ff; font-weight: 600; }
+    .green     { color: #56d364; font-weight: 600; }
+    .orange    { color: #f0883e; font-weight: 600; }
+    .purple    { color: #bc8cff; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<h1>AI Digest — Pipeline Flow</h1>
+<p class="subtitle">How papers are fetched, filtered, scored, and delivered — first run vs subsequent runs, across multiple users.</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="swatch" style="background:#2d4a7a"></div> Trigger &amp; control flow</div>
+  <div class="legend-item"><div class="swatch" style="background:#1a3a2a"></div> Supabase (database)</div>
+  <div class="legend-item"><div class="swatch" style="background:#3a2a5a"></div> OpenAI (LLM calls)</div>
+  <div class="legend-item"><div class="swatch" style="background:#4a2a1a"></div> External APIs (arXiv, Notion)</div>
+  <div class="legend-item"><div class="swatch" style="background:#3a1a1a"></div> Error / terminal state</div>
+  <div class="legend-item"><div class="swatch" style="background:#2a3a1a"></div> Per-user loop</div>
+</div>
+
+<div class="diagram-wrap">
+<div class="mermaid">
+%%{init: {
+  "theme": "dark",
+  "themeVariables": {
+    "primaryColor":        "#1c2128",
+    "primaryTextColor":    "#e6edf3",
+    "primaryBorderColor":  "#444c56",
+    "lineColor":           "#768390",
+    "secondaryColor":      "#22272e",
+    "tertiaryColor":       "#2d333b",
+    "background":          "#161b22",
+    "nodeBorder":          "#444c56",
+    "clusterBkg":          "#1c2128",
+    "clusterBorder":       "#444c56",
+    "titleColor":          "#e6edf3",
+    "edgeLabelBackground": "#22272e",
+    "fontFamily":          "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+  },
+  "flowchart": { "curve": "basis", "padding": 20, "nodeSpacing": 50, "rankSpacing": 60 }
+}}%%
+
+flowchart TD
+
+  %% ══════════════════════════════════════════════════════════════════
+  %% TRIGGERS
+  %% ══════════════════════════════════════════════════════════════════
+  subgraph TRIG["① Triggers"]
+    direction TB
+    CRON[/"⏰  GitHub Actions cron\nevery UTC hour"/]
+    MANUAL[/"👤  User clicks Run Now\n(web dashboard)"/]
+
+    CRON --> CHECK_JOB["check job: count users\ndue at this UTC hour\n❬digest_hour − timezone_offset❭ mod 24"]
+    CHECK_JOB -->|"0 users due"| EXIT1(["⏹  Exit — nothing to do"])
+    CHECK_JOB -->|"≥ 1 users due"| GH_START(["▶  Start pipeline job\n(GitHub Actions runner)"])
+
+    MANUAL --> RATE_CHECK{"Rate limits OK?\n≤ 3 triggers / day\n5-min cooldown\nafter success"}
+    RATE_CHECK -->|"Limit reached"| ERR429(["⛔  429 Too Many Requests"])
+    RATE_CHECK -->|"OK"| DB_PENDING["pipeline_runs → status = pending\n(DB write — atomic, race-safe)"]
+    DB_PENDING --> MODE{"trigger_mode?"}
+    MODE -->|"github_actions\n(production)"| GH_DISPATCH["Dispatch workflow_dispatch\nto GitHub Actions →"]
+    MODE -->|"direct\n(local dev)"| LOCAL_SPAWN["spawn python pipeline.py\n(background child process)"]
+    GH_DISPATCH --> GH_START
+    LOCAL_SPAWN --> LOCAL_START(["▶  Pipeline running locally"])
+  end
+
+  %% ══════════════════════════════════════════════════════════════════
+  %% SHARED ARXIV FETCH
+  %% ══════════════════════════════════════════════════════════════════
+  subgraph FETCH["② Shared arXiv Fetch  (runs once per calendar day — shared across ALL users)"]
+    direction TB
+    FETCH_ENTRY["Pipeline entry\npipeline.py main()"]
+    FETCH_ENTRY --> CACHE_CHECK{"papers_cache\nhas rows for today?"}
+
+    CACHE_CHECK -->|"Cache hit ✓"| CACHED_PAPERS["Use cached papers\n(no arXiv call needed)"]
+
+    CACHE_CHECK -->|"Cache miss"| WAIT["Wait 5 s and recheck\n(let a concurrent fetch finish)"]
+    WAIT --> RETRY_CHECK{"Cache populated\nby concurrent fetch?"}
+    RETRY_CHECK -->|"Yes ✓"| CACHED_PAPERS
+    RETRY_CHECK -->|"No"| ARXIV_FETCH["Fetch from arXiv API\n5 categories: cs.LG cs.CL cs.IR cs.AI cs.CV\nup to 150 results / category\n1-day window (2-day on Mon/Sun)"]
+    ARXIV_FETCH --> KEYWORD_FILTER["Keyword group filter\nMatch title + abstract against 5 groups:\nRAG   ·   Agents   ·   LLMs   ·   Multimodal   ·   Safety\nDiscard papers that match no group"]
+    KEYWORD_FILTER --> DEDUP_CATS["De-duplicate across categories\n(same arXiv ID can appear in cs.AI + cs.LG)"]
+    DEDUP_CATS --> CACHE_WRITE["Write to papers_cache\n(shared — any subsequent pipeline\ninstance today reuses these rows)"]
+    CACHE_WRITE --> CACHED_PAPERS
+  end
+
+  %% ══════════════════════════════════════════════════════════════════
+  %% LOAD USERS
+  %% ══════════════════════════════════════════════════════════════════
+  subgraph USERS["③ User Selection"]
+    direction LR
+    LOAD_USERS["Load user_configs\nnotion_connected = true\nDecrypt notion_token + notion_database_id\n(AES-256-GCM)"]
+    LOAD_USERS --> TIME_GATE{"Scheduled run?\n(PIPELINE_SKIP_TIME_FILTER)"}
+    TIME_GATE -->|"Manual dispatch\nskip_time_filter = true"| ALL_U["All active users"]
+    TIME_GATE -->|"Scheduled run\ntime filter active"| DUE_U["Only users whose\ndigest_hour − timezone_offset\n= current UTC hour"]
+    ALL_U --> ULOOP
+    DUE_U --> ULOOP
+    ULOOP(["↻  For each user…"])
+  end
+
+  %% ══════════════════════════════════════════════════════════════════
+  %% PER-USER LOOP
+  %% ══════════════════════════════════════════════════════════════════
+  subgraph PERUSER["④ Per-User Processing  (runs independently for each user — one failure never stops others)"]
+    direction TB
+
+    MARK_RUNNING["pipeline_runs → status = running\npapers_fetched = N"]
+
+    %% Cross-day dedup ──────────────────────────────────
+    subgraph DEDUP["Cross-day Deduplication"]
+      direction LR
+      LOAD_SEEN["Load user_delivered_papers\nAll arXiv IDs ever sent to this user\n(paginated, never silently truncated)"]
+      FIRST_Q{"First-ever run?\n(delivered set empty)"}
+      LOAD_SEEN --> FIRST_Q
+      FIRST_Q -->|"Yes — 0 exclusions\nAll N papers are fresh"| FRESH_ALL["N fresh papers"]
+      FIRST_Q -->|"No — M papers excluded\nPreviously delivered on past days"| DEDUP_FILTER["Filter out M already-delivered IDs\nFresh = N − M papers"]
+      DEDUP_FILTER --> FRESH_DEDUPED["N − M fresh papers"]
+    end
+
+    %% Shortlist ──────────────────────────────────
+    subgraph SHORTLIST_SG["Shortlist  (Python only — no LLM, no cost)"]
+      direction LR
+      SHORT_Q{"Fresh papers\n> 40?"}
+      SHORT_YES["Score each paper by keyword\noverlap with user's topics:\n  title match   × 3\n  group match   × 2\n  abstract match× 1\nKeep top 40 by overlap score"]
+      SHORT_NO["All papers pass\n(≤ 40 — no trimming needed)"]
+      SHORT_Q -->|"Yes"| SHORT_YES
+      SHORT_Q -->|"No"| SHORT_NO
+      SHORT_RESULT(["≤ 40 shortlisted papers"])
+      SHORT_YES --> SHORT_RESULT
+      SHORT_NO  --> SHORT_RESULT
+    end
+
+    %% Scoring ──────────────────────────────────
+    subgraph SCORING_SG["Scoring  (LLM pass 1)"]
+      direction TB
+      RANK_CACHE_CHECK["Check paper_rankings_cache\nKey: user_id + fetch_date\n     + profile_hash + prompt_version"]
+      CACHE_HIT["Cache hits:\nReuse stored scores\n(same profile, same day)"]
+      CACHE_MISS["Cache misses:\nBatch → OpenAI GPT-4o-mini\nAbstract truncated to 400 chars\nBatch size: 40 papers / call"]
+      SCORE_PROMPT["Scoring prompt:\n  • User profile description\n  • Experience level\n  • Topics of interest\n  • 4-criterion rubric:\n     builder_relevance\n     understandability\n     real_world_grounding\n     novelty_timing\n  • Overall = average of active criteria"]
+      CACHE_WRITE2["Write new scores to\npaper_rankings_cache"]
+      RANK_CACHE_CHECK --> CACHE_HIT
+      RANK_CACHE_CHECK --> CACHE_MISS
+      CACHE_MISS --> SCORE_PROMPT --> CACHE_WRITE2 --> CACHE_HIT
+      CACHE_HIT --> THRESHOLD{"Score ≥ 7.0?"}
+      THRESHOLD -->|"No"| DISCARD_P["Paper discarded"]
+      THRESHOLD -->|"Yes"| PASSING_P["Paper passes ✓"]
+    end
+
+    %% Summarise ──────────────────────────────────
+    subgraph SUMMARY_SG["Summarisation  (LLM pass 2 — only passing papers)"]
+      direction LR
+      ANY_Q{"Any papers\npassed?"}
+      EMPTY_RUN["pipeline_runs\n→ status = empty"]
+      SUMM["OpenAI GPT-4o-mini\nFull abstract (no truncation)\nBatch size: 12 papers / call\n5 fields per paper:\nproblem · approach · results\nbuilder_takeaway · learning_path"]
+      ANY_Q -->|"No"| EMPTY_RUN
+      ANY_Q -->|"Yes"| SUMM
+    end
+
+    %% Delivery ──────────────────────────────────
+    subgraph DELIVERY_SG["Delivery  (Notion + state update)"]
+      direction TB
+      NOTION_DELIVER["Deliver to Notion\nUpsert 'AI Digest — YYYY-MM-DD'\nIf page exists: delete blocks, rewrite\nIf new: create page + append blocks\n(handles re-runs cleanly)"]
+      RECORD_DELIVERED["Write to user_delivered_papers\nRecord all delivered arXiv IDs\n(prevents re-delivery on future runs)"]
+      SET_COMPLETE["pipeline_runs → status = complete\npapers_passed · top_score\nnotion_page_url · completed_at"]
+      NOTION_DELIVER --> RECORD_DELIVERED --> SET_COMPLETE
+    end
+
+    %% Connect sub-sections ──────────────────────────────────
+    MARK_RUNNING    --> LOAD_SEEN
+    FRESH_ALL       --> SHORT_Q
+    FRESH_DEDUPED   --> SHORT_Q
+    SHORT_RESULT    --> RANK_CACHE_CHECK
+    PASSING_P       --> ANY_Q
+    SUMM            --> NOTION_DELIVER
+    SET_COMPLETE    --> NEXT_USER{"More users?"}
+    EMPTY_RUN       --> NEXT_USER
+    NEXT_USER       -->|"Yes"| MARK_RUNNING
+    NEXT_USER       -->|"No"| PIPELINE_DONE(["✅  Pipeline complete"])
+  end
+
+  %% ══════════════════════════════════════════════════════════════════
+  %% ERROR HANDLING
+  %% ══════════════════════════════════════════════════════════════════
+  subgraph ERRORS["⑤ Error Handling"]
+    direction LR
+    PRE_FAIL["Pre-loop crash\n(arXiv fetch or DB failure)"]
+    FAIL_ALL["_fail_pending_runs:\nSet status = failed\nfor all pending rows today\n→ dashboard stops polling"]
+    PER_FAIL["Per-user exception"]
+    FAIL_ONE["That user's run → failed\nerror_message saved\nOther users continue"]
+    PRE_FAIL --> FAIL_ALL
+    PER_FAIL --> FAIL_ONE
+  end
+
+  %% ══════════════════════════════════════════════════════════════════
+  %% TOP-LEVEL CONNECTIONS
+  %% ══════════════════════════════════════════════════════════════════
+  GH_START      --> FETCH_ENTRY
+  LOCAL_START   --> FETCH_ENTRY
+  CACHED_PAPERS --> LOAD_USERS
+  ULOOP         --> MARK_RUNNING
+  FETCH_ENTRY   -.->|"crash before fetch"| PRE_FAIL
+  LOAD_USERS    -.->|"crash loading users"| PRE_FAIL
+  MARK_RUNNING  -.->|"exception in loop"| PER_FAIL
+
+  %% ══════════════════════════════════════════════════════════════════
+  %% STYLES
+  %% ══════════════════════════════════════════════════════════════════
+  classDef trigger    fill:#2d4a7a,stroke:#58a6ff,color:#cae8ff
+  classDef db         fill:#1a3a2a,stroke:#3fb950,color:#aff3c0
+  classDef llm        fill:#3a2a5a,stroke:#bc8cff,color:#e0cfff
+  classDef external   fill:#4a2a1a,stroke:#f0883e,color:#ffdab0
+  classDef error_node fill:#3a1a1a,stroke:#f85149,color:#ffa198
+  classDef decision   fill:#1c2128,stroke:#768390,color:#e6edf3
+  classDef terminal   fill:#22272e,stroke:#444c56,color:#e6edf3
+  classDef peruser    fill:#2a3a1a,stroke:#7ee787,color:#d2f4dc
+
+  class CRON,MANUAL,GH_DISPATCH,LOCAL_SPAWN,GH_START,LOCAL_START,DB_PENDING,MODE,RATE_CHECK trigger
+  class CACHE_CHECK,CACHE_WRITE,CACHED_PAPERS,RANK_CACHE_CHECK,CACHE_HIT,CACHE_WRITE2,LOAD_USERS,LOAD_SEEN,RECORD_DELIVERED,SET_COMPLETE,EMPTY_RUN,MARK_RUNNING db
+  class CACHE_MISS,SCORE_PROMPT,SUMM llm
+  class ARXIV_FETCH,NOTION_DELIVER external
+  class PRE_FAIL,FAIL_ALL,PER_FAIL,FAIL_ONE,ERR429,EXIT1 error_node
+  class CHECK_JOB,RATE_CHECK,CACHE_CHECK,RETRY_CHECK,FIRST_Q,SHORT_Q,TIME_GATE,THRESHOLD,ANY_Q,MODE,NEXT_USER decision
+  class EXIT1,ERR429,PIPELINE_DONE,ULOOP terminal
+  class KEYWORD_FILTER,DEDUP_CATS,FRESH_ALL,FRESH_DEDUPED,DEDUP_FILTER,SHORT_YES,SHORT_NO,SHORT_RESULT,PASSING_P,DISCARD_P peruser
+</div>
+</div>
+
+<!-- ── Notes ── -->
+<div class="notes">
+
+  <div class="note-card">
+    <h3>First Run vs Subsequent Runs</h3>
+    <ul>
+      <li><span class="green">First run:</span> <code>user_delivered_papers</code> is empty → all N papers from the cache are "fresh" → no cross-day filtering</li>
+      <li><span class="orange">Subsequent runs:</span> M previously-delivered arXiv IDs are loaded and removed from the pool before shortlisting → user never sees the same paper twice</li>
+      <li>Deduplication is per-user — User A's delivery history does not affect User B's paper pool</li>
+      <li>Within a single day, re-running replays from the same <code>papers_cache</code> snapshot; only the specific papers the user hasn't received yet are re-evaluated</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>Shared vs Per-User Data</h3>
+    <ul>
+      <li><span class="green">papers_cache</span> — one row per arXiv paper per calendar day; written once, read by all users that day</li>
+      <li><span class="purple">paper_rankings_cache</span> — per user × per paper × per profile hash × per prompt version; if the user edits their topics, old cached scores are ignored and new ones are generated</li>
+      <li><span class="green">user_delivered_papers</span> — lifetime ledger per user; never cleared; grows every successful run</li>
+      <li><span class="orange">pipeline_runs</span> — one row per user per calendar day; tracks status and metrics for the dashboard</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>Shortlisting Pipeline (per user)</h3>
+    <ul>
+      <li><span class="highlight">Step 1 — arXiv keyword filter</span>: shared; drops papers not matching any of 5 keyword groups (RAG, Agents, LLMs, Multimodal, Safety)</li>
+      <li><span class="highlight">Step 2 — Cross-day dedup</span>: per-user; removes papers the user already received on past days</li>
+      <li><span class="highlight">Step 3 — Topic shortlist</span>: per-user; Python keyword overlap (title ×3, group ×2, abstract ×1) against the user's topic list; keeps top 40</li>
+      <li><span class="highlight">Step 4 — LLM scoring</span>: per-user; GPT-4o-mini scores each paper 1–10 on 4 rubric criteria; only papers ≥ 7.0 pass</li>
+      <li><span class="highlight">Step 5 — LLM summarisation</span>: per-user; GPT-4o-mini writes 5 structured fields for each passing paper</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>Scheduled vs Manual Runs</h3>
+    <ul>
+      <li><span class="green">Scheduled (cron):</span> check job runs every hour for ~15 s; heavy pipeline job only starts when users are actually due; uses OpenAI <strong>Batch API</strong> (50% cost, ~minutes latency)</li>
+      <li><span class="orange">Manual (Run Now):</span> skips the time-of-day filter → all active users processed; uses <strong>synchronous</strong> OpenAI calls for immediate results; capped at 3 triggers/user/day with 5-min post-success cooldown</li>
+      <li>Both paths share the same <code>papers_cache</code> — a manual run at noon never re-fetches arXiv if the scheduled run already ran that morning</li>
+      <li>Concurrent manual triggers are race-safe: only one wins the DB atomic update to <code>pending</code>; the other gets a 400 "already running"</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>Multi-User Isolation</h3>
+    <ul>
+      <li>Each user runs inside an independent try/except block — one user's Notion error or OpenAI timeout never stops other users</li>
+      <li>Scoring and summarisation use per-user <code>profile_hash</code> as a cache key so two users with identical topics but different experience levels get different scores</li>
+      <li>Notion delivery is per-user (each user's own database and integration token)</li>
+      <li>The GitHub Actions concurrency group allows one scheduled run + unlimited simultaneous manual dispatch jobs</li>
+    </ul>
+  </div>
+
+  <div class="note-card">
+    <h3>Key Thresholds &amp; Limits</h3>
+    <ul>
+      <li><span class="highlight">arXiv fetch:</span> 5 categories × 150 results = up to 750 raw papers/day (de-duped across categories)</li>
+      <li><span class="highlight">Keyword filter:</span> only papers matching at least one of 5 groups pass</li>
+      <li><span class="highlight">Shortlist cap:</span> MAX_SHORTLIST = 40 papers sent to the LLM per user</li>
+      <li><span class="highlight">Score threshold:</span> SCORE_THRESHOLD = 7.0 / 10</li>
+      <li><span class="highlight">Abstract truncation:</span> 400 chars for scoring; full abstract for summarisation</li>
+      <li><span class="highlight">Notion block limit:</span> 100 blocks/append call; long digests chunked automatically</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "loose",
+    flowchart: { useMaxWidth: false }
+  });
+</script>
+
+</body>
+</html>
