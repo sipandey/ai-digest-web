@@ -18,8 +18,17 @@
 DROP INDEX IF EXISTS users_notion_bot_id_key;
 
 -- 2. Add a proper unique constraint (allows multiple NULLs; blocks duplicate non-null values)
-ALTER TABLE users
-  ADD CONSTRAINT IF NOT EXISTS users_notion_bot_id_key UNIQUE (notion_bot_id);
+--    Wrapped in DO block because ADD CONSTRAINT has no IF NOT EXISTS.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'users_notion_bot_id_key'
+      AND conrelid = 'users'::regclass
+  ) THEN
+    ALTER TABLE users ADD CONSTRAINT users_notion_bot_id_key UNIQUE (notion_bot_id);
+  END IF;
+END$$;
 
 -- 3. Ensure the `active` column exists (idempotent)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
