@@ -144,6 +144,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NOTION_TOKEN_ENCRYPTION_KEY: ${{ secrets.NOTION_TOKEN_ENCRYPTION_KEY }}
           PIPELINE_USER_ID: ${{ github.event.inputs.user_id }}
           PIPELINE_RUN_DATE: ${{ github.event.inputs.run_date }}
           # Scheduled runs use the Batch API (50% cost, ~minutes latency).

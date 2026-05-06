@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from datetime import date, datetime, timezone
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -153,6 +154,39 @@ def _upsert_run(user_id: str, run_date: str, **fields) -> str:
     return result.data[0]["id"]
 
 
+# ── fatal-error recovery ───────────────────────────────────────────────────────
+
+def _fail_pending_runs(run_date: str, target_user_id: Optional[str], error: str) -> None:
+    """Mark any pending/running pipeline_runs rows as failed.
+
+    Called when the pipeline crashes before the per-user loop — e.g. during
+    fetch_papers() or get_active_users().  Without this, the trigger route
+    sets status='pending' and the dashboard polls forever because nothing ever
+    moves it to a terminal state.
+    """
+    try:
+        query = (
+            supabase.table("pipeline_runs")
+            .update({
+                "status": "failed",
+                "error_message": f"Pipeline startup error: {error[:400]}",
+                "completed_at": _now(),
+            })
+            .eq("run_date", run_date)
+            .in_("status", ["pending", "running"])
+        )
+        if target_user_id:
+            query = query.eq("user_id", target_user_id)
+        query.execute()
+        log.info(
+            "Marked pending/running runs as failed",
+            extra={"run_date": run_date, "target_user_id": target_user_id, "error": error},
+        )
+    except Exception as cleanup_exc:
+        # Don't let cleanup failure mask the original error.
+        log.error("Failed to mark runs as failed: %s", cleanup_exc)
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -175,14 +209,23 @@ def main() -> None:
     )
 
     # ── Shared fetch (runs once, cached for the day) ──────────────────────────
-    papers = fetch_papers(run_date)
+    try:
+        papers = fetch_papers(run_date)
+    except Exception as exc:
+        _fail_pending_runs(run_date, target_user_id, str(exc))
+        raise
+
     log.info(
         "Papers fetched",
         extra={"run_date": run_date, "papers_fetched": len(papers)},
     )
 
     # ── Load active users then apply per-user delivery-time filter ────────────
-    all_users = get_active_users(target_user_id)
+    try:
+        all_users = get_active_users(target_user_id)
+    except Exception as exc:
+        _fail_pending_runs(run_date, target_user_id, str(exc))
+        raise
 
     if skip_time_filter:
         users = all_users
