@@ -168,6 +168,131 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── EXAMPLE DIGEST ───────────────────────────────────────────────── */}
+      <section className="px-5 py-24 bg-[#f4f4f8]">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest text-center mb-4">
+            Example output
+          </p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#14141e] text-center mb-4">
+            This is what lands in your Notion
+          </h2>
+          <p className="text-sm text-gray-500 text-center mb-12 max-w-lg mx-auto">
+            Every paper gets a structured summary you can actually act on — not just an abstract dump.
+          </p>
+
+          {/* Mock Notion page card */}
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm max-w-2xl mx-auto">
+            {/* Notion-style page header */}
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">9.1 / 10</span>
+                <span className="text-xs text-gray-400">cs.LG · RAG and retrieval systems</span>
+              </div>
+              <h3 className="text-base font-bold text-[#14141e] leading-snug">
+                RAPTOR: Recursive Abstractive Processing for Tree-Organised Retrieval
+              </h3>
+              <p className="text-xs text-gray-400 mt-1.5">Sarthi et al. · Stanford · arXiv:2401.18059</p>
+            </div>
+
+            {/* Summary sections */}
+            <div className="divide-y divide-gray-50">
+              {[
+                {
+                  label: "🧩 Problem",
+                  text: "Standard RAG retrieves only short, local text chunks, missing cross-document themes and high-level reasoning — causing failures on multi-hop questions that require synthesising information across many passages.",
+                },
+                {
+                  label: "⚙️ Approach",
+                  text: "Clusters leaf chunks, summarises each cluster recursively to build a tree of abstractions, then retrieves from all levels at query time. Tree construction uses k-means on embeddings; summaries are generated with GPT-4.",
+                },
+                {
+                  label: "📊 Results",
+                  text: "20% relative improvement on QASPER and QuALITY vs flat RAG. Particularly strong on multi-hop questions (up to 35% gain). Works with any embedding + LLM pair.",
+                },
+                {
+                  label: "🔨 Builder takeaway",
+                  text: "Add a summarisation layer above your existing vector store — cluster chunks nightly and embed the summaries alongside originals. Retrieval at inference time is unchanged.",
+                },
+                {
+                  label: "📚 Learning path",
+                  text: "Understand vector similarity search and basic RAG pipelines before diving in.",
+                },
+              ].map(({ label, text }) => (
+                <div key={label} className="px-6 py-4">
+                  <p className="text-xs font-semibold text-gray-500 mb-1.5">{label}</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{text}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="px-6 py-3 bg-gray-50 flex items-center gap-3">
+              <a href="#" className="text-xs text-indigo-600 font-medium hover:underline">View PDF ↗</a>
+              <span className="text-gray-200">|</span>
+              <span className="text-xs text-gray-400">Delivered 07:00 IST · AI Digest</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ───────────────────────────────────────────────────────────── */}
+      <section className="px-5 py-24 bg-white">
+        <div className="max-w-2xl mx-auto">
+          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest text-center mb-4">
+            FAQ
+          </p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#14141e] text-center mb-12">
+            Common questions
+          </h2>
+
+          <div className="space-y-4">
+            {[
+              {
+                q: "Is my Notion token safe?",
+                a: "Your integration token is stored encrypted at rest in our database and used only to write digest pages to your Notion workspace. We never read any existing Notion content — the integration only has the access you grant it. You can revoke access at any time from notion.so/my-integrations.",
+              },
+              {
+                q: "What Notion access does the integration need?",
+                a: "Read content (to verify the database exists), Insert content (to create new digest pages), and Update content (to refresh pages on re-runs). The integration can only access the specific database you share with it — not your entire workspace.",
+              },
+              {
+                q: "How much does it cost?",
+                a: "AI Digest is free. The pipeline runs on arXiv's public API and uses a small amount of OpenAI quota per user per day. If you find it valuable, there's a \"Buy me a coffee\" link in the footer — entirely optional.",
+              },
+              {
+                q: "What if no papers match my interests on a given day?",
+                a: "The pipeline runs every morning and the digest is only created when papers pass your relevance threshold. On slow days (weekends, holidays) you may not receive anything — that's intentional. Better nothing than noise.",
+              },
+              {
+                q: "Can I change my topics and settings later?",
+                a: "Yes — open Settings from your dashboard. Changes apply from the next morning's run.",
+              },
+              {
+                q: "Do I need a Notion account to sign up?",
+                a: "Yes — the entire product is Notion-native. Your digest is delivered as a Notion database page, so you'll need a free Notion account and an integration token. Setup takes about two minutes.",
+              },
+              {
+                q: "Can I use an email account instead of the Notion-first flow?",
+                a: "Yes. Click \"Sign up with email\" on the home page to create a password-based account first, then connect Notion during onboarding. Both paths end up in the same place.",
+              },
+            ].map(({ q, a }) => (
+              <details key={q} className="group bg-[#f4f4f8] rounded-2xl">
+                <summary className="flex items-center justify-between px-5 py-4 cursor-pointer list-none">
+                  <span className="text-sm font-semibold text-[#14141e] pr-4">{q}</span>
+                  <svg
+                    className="w-4 h-4 text-gray-400 shrink-0 transition-transform group-open:rotate-180"
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </summary>
+                <div className="px-5 pb-5 text-sm text-gray-500 leading-relaxed -mt-1">{a}</div>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── FOOTER ───────────────────────────────────────────────────────── */}
       <footer className="border-t border-gray-200 bg-white px-5 py-10 text-center">
         <p className="text-sm font-semibold text-gray-700">AI Digest</p>
