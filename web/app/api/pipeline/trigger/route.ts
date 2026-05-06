@@ -175,20 +175,14 @@ export async function POST() {
         );
       }
 
-      // ── Daily cap (DB-based, works across serverless instances) ──────────────
       const triggerCount = existingRun.trigger_count ?? 1;
-      if (triggerCount >= MAX_DAILY_TRIGGERS) {
-        return NextResponse.json(
-          {
-            error: `You've reached the limit of ${MAX_DAILY_TRIGGERS} manual runs today. Your scheduled digest will run again tomorrow morning.`,
-            dailyLimitReached: true,
-          },
-          { status: 429 }
-        );
-      }
+      const ranSuccessfully =
+        existingRun.status === "complete" || existingRun.status === "empty";
 
-      // ── 5-minute cooldown between reruns ─────────────────────────────────────
-      if (existingRun.completed_at) {
+      // ── 5-minute cooldown — only after a successful run ───────────────────────
+      // Failed runs allow an immediate retry so the user isn't penalised for
+      // pipeline errors (e.g. a transient OpenAI outage or a startup crash).
+      if (ranSuccessfully && existingRun.completed_at) {
         const secondsSinceCompletion =
           (Date.now() - new Date(existingRun.completed_at).getTime()) / 1000;
         const COOLDOWN_SECONDS = 5 * 60;
@@ -203,6 +197,17 @@ export async function POST() {
             { status: 429 }
           );
         }
+      }
+
+      // ── Daily cap (DB-based, works across serverless instances) ──────────────
+      if (triggerCount >= MAX_DAILY_TRIGGERS) {
+        return NextResponse.json(
+          {
+            error: `You've reached the limit of ${MAX_DAILY_TRIGGERS} manual runs today. Your scheduled digest will run again tomorrow morning.`,
+            dailyLimitReached: true,
+          },
+          { status: 429 }
+        );
       }
 
       // ── Atomic reset — only wins if status is still terminal ─────────────────
