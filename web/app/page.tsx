@@ -309,6 +309,9 @@ export default function LandingPage() {
           <a href="/privacy" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
             Privacy
           </a>
+          <a href="/terms" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+            Terms
+          </a>
         </div>
       </footer>
     </div>

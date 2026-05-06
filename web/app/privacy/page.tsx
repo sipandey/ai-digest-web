@@ -102,9 +102,12 @@ export default function PrivacyPage() {
         </div>
       </main>
 
-      <footer className="border-t border-gray-200 bg-white px-5 py-8 text-center">
+      <footer className="border-t border-gray-200 bg-white px-5 py-8 text-center flex items-center justify-center gap-6">
         <Link href="/" className="text-sm text-indigo-600 hover:underline">
           ← Back to AI Digest
+        </Link>
+        <Link href="/terms" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+          Terms of Service
         </Link>
       </footer>
     </div>

@@ -20,13 +20,9 @@ Implemented AES-256-GCM application-layer encryption for `notion_token` and `not
 
 ---
 
-### Legal-3. No Terms of Service
-There is a privacy policy but no Terms of Service. Without one you have no contractual basis to:
-- Suspend or ban abusive accounts
-- Limit liability for service interruptions or incorrect AI summaries
-- Disclaim warranty on AI-generated digest content (summaries can be inaccurate)
-- Restrict use to individuals (not competitors scraping your pipeline)
-**Fix:** Add a minimal ToS page at `/terms`. At minimum cover: acceptable use, no warranty on AI outputs, right to terminate accounts, governing law/jurisdiction. Standard free-service templates exist and do not require a lawyer.
+### ~~Legal-3. No Terms of Service~~ ✅ Fixed
+**File:** `web/app/terms/page.tsx` (new)
+Added a 12-section Terms of Service page at `/terms` covering: service description, eligibility (18+, one account per person, individual use only), acceptable use prohibitions, AI content disclaimer (no warranty on summaries), service availability (best-effort, no uptime guarantee), account termination rights, limitation of liability ("as is"), third-party services, IP, changes to terms, and governing law (India). Terms link added to landing page footer and cross-linked from the Privacy Policy page.
 
 ---
 
