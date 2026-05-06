@@ -48,15 +48,13 @@ The full `user_configs` row (including `notion_token`) was returned to the brows
 
 ### ~~H-2. No HTTP security headers~~ ✅ Fixed
 **File:** `web/next.config.ts`  
-Added `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, and a baseline `Content-Security-Policy` covering Clerk's CDN domains. CSP currently uses `unsafe-inline` for scripts (required by Next.js App Router without nonce configuration) — see item H-2b below.
+Added `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`. CSP moved to `proxy.ts` (H-2b).
 
 ---
 
-### H-2b. Tighten Content-Security-Policy with nonces (Next.js App Router)
-**File:** `web/next.config.ts`, `web/app/layout.tsx`  
-The current CSP uses `'unsafe-inline'` for `script-src` because Next.js App Router injects inline scripts at render time. The correct fix is to generate a per-request nonce, pass it through Next.js middleware, and use `script-src 'nonce-{value}'` instead.  
-**Docs:** https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy  
-**Impact:** Without this, the CSP still blocks third-party script loading and clickjacking, but does not prevent inline XSS escalation.
+### ~~H-2b. Tighten Content-Security-Policy with nonces (Next.js App Router)~~ ✅ Fixed
+**File:** `web/proxy.ts` (Next.js 16 middleware), `web/next.config.ts`
+CSP is now generated dynamically per request in `proxy.ts` with a cryptographic nonce (`crypto.randomUUID()` → base64). `script-src` uses `'nonce-{value}' 'strict-dynamic'` instead of `'unsafe-inline'`. Next.js reads the `x-nonce` request header to apply the nonce to its own hydration scripts; Clerk v7's `DynamicClerkScripts` reads it via `headers()` automatically. The static CSP entry has been removed from `next.config.ts` (other security headers remain there). `style-src` still uses `'unsafe-inline'` as Tailwind and Clerk component styles cannot be nonce-tagged.
 
 ---
 
@@ -167,8 +165,8 @@ No cap on total pipeline runs across all users. Viral growth or a multi-account 
 ---
 
 ### L-2. Protected routes have no Next.js middleware guard
-**Problem:** `/dashboard` and `/settings` are protected only by client-side `useEffect` redirects. There is no `middleware.ts`. The page briefly renders before the auth check fires, and any JavaScript-disabling client bypasses the redirect entirely (though the API routes still enforce auth).  
-**Fix:** Add Clerk's `clerkMiddleware()` in `web/middleware.ts` with a route matcher for `/dashboard` and `/settings`.
+**Problem:** `/dashboard` and `/settings` are protected only by client-side `useEffect` redirects. There is no proxy middleware. The page briefly renders before the auth check fires, and any JavaScript-disabling client bypasses the redirect entirely (though the API routes still enforce auth).  
+**Fix:** Add Clerk's `clerkMiddleware()` in `web/proxy.ts` (Next.js 16 middleware file) with a route matcher for `/dashboard` and `/settings`. Note: `proxy.ts` now exists for CSP nonce generation (H-2b) — route protection can be added there.
 
 ---
 
