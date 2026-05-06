@@ -64,15 +64,14 @@ Removed `active` from `ALLOWED_FIELDS`. A comment explains the intent. Account a
 
 ---
 
-### H-4. No input validation on PATCH fields
-**File:** `web/app/api/users/config/route.ts` — PATCH handler  
-Values are passed directly to Supabase with no type or range checks:
-- `profile_description`: no max length — a 100 KB string bloats every OpenAI prompt for that user
-- `topics`: no count or per-item length limit
-- `digest_hour`: no 0–23 range check
-- `timezone_offset`: no −12 to +14 range check  
-
-Add server-side validation before the DB write. Suggested limits: `profile_description` ≤ 500 chars, `topics` ≤ 5 items × 60 chars each, numeric fields within valid ranges.
+### ~~H-4. No input validation on PATCH fields~~ ✅ Fixed
+**File:** `web/app/api/users/config/route.ts` — POST and PATCH handlers  
+Added server-side validation before every DB write:
+- `profile_description` ≤ 500 chars (type-checked as string)
+- `topics` ≤ 5 items, each ≤ 60 chars (type-checked as string array)
+- `digest_hour` integer in [0, 23] (coerced to number)
+- `timezone_offset` integer in [−12, 14] (coerced to number)
+Validation applied to both the POST (onboarding) and PATCH (settings) handlers. Returns `400` with a descriptive message listing all failures.
 
 ---
 

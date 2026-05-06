@@ -131,6 +131,28 @@ export async function POST(req: NextRequest) {
       timezoneOffset,
     } = body;
 
+    // ── Input validation ─────────────────────────────────────────────────────
+    const postErrors: string[] = [];
+
+    if (typeof profileDescription === "string" && profileDescription.length > 500) {
+      postErrors.push("profile_description must be 500 characters or fewer");
+    }
+    if (Array.isArray(topics)) {
+      if (topics.length > 5) postErrors.push("topics must have 5 items or fewer");
+      if (topics.some((t: unknown) => typeof t !== "string" || (t as string).length > 60)) {
+        postErrors.push("each topic must be a string of 60 characters or fewer");
+      }
+    }
+    if (typeof digestHour === "number" && (!Number.isInteger(digestHour) || digestHour < 0 || digestHour > 23)) {
+      postErrors.push("digest_hour must be an integer between 0 and 23");
+    }
+    if (typeof timezoneOffset === "number" && (!Number.isInteger(timezoneOffset) || timezoneOffset < -12 || timezoneOffset > 14)) {
+      postErrors.push("timezone_offset must be an integer between -12 and 14");
+    }
+    if (postErrors.length > 0) {
+      return NextResponse.json({ error: postErrors.join("; ") }, { status: 400 });
+    }
+
     // Validate Notion credentials before persisting — uses plaintext values
     // from the request body, before encryption.
     const check = await validateNotionCredentials(
@@ -209,6 +231,65 @@ export async function PATCH(req: NextRequest) {
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
+    // ── Server-side validation ────────────────────────────────────────────────
+    const validationErrors: string[] = [];
+
+    if ("profile_description" in updates) {
+      const v = updates["profile_description"];
+      if (v !== null && v !== "") {
+        if (typeof v !== "string") {
+          validationErrors.push("profile_description must be a string");
+        } else if (v.length > 500) {
+          validationErrors.push("profile_description must be 500 characters or fewer");
+        }
+      }
+    }
+
+    if ("topics" in updates) {
+      const v = updates["topics"];
+      if (v !== null) {
+        if (!Array.isArray(v)) {
+          validationErrors.push("topics must be an array");
+        } else {
+          if (v.length > 5) {
+            validationErrors.push("topics must have 5 items or fewer");
+          }
+          const badItems = v.filter((t) => typeof t !== "string" || (t as string).length > 60);
+          if (badItems.length > 0) {
+            validationErrors.push("each topic must be a string of 60 characters or fewer");
+          }
+        }
+      }
+    }
+
+    if ("digest_hour" in updates) {
+      const v = updates["digest_hour"];
+      if (v !== null && v !== undefined) {
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < 0 || n > 23) {
+          validationErrors.push("digest_hour must be an integer between 0 and 23");
+        } else {
+          updates["digest_hour"] = n; // normalise to number
+        }
+      }
+    }
+
+    if ("timezone_offset" in updates) {
+      const v = updates["timezone_offset"];
+      if (v !== null && v !== undefined) {
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < -12 || n > 14) {
+          validationErrors.push("timezone_offset must be an integer between -12 and 14");
+        } else {
+          updates["timezone_offset"] = n; // normalise to number
+        }
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      return NextResponse.json({ error: validationErrors.join("; ") }, { status: 400 });
     }
 
     // Encrypt credential fields when they are being updated.
