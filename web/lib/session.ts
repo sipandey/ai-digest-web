@@ -103,5 +103,18 @@ export function buildSetCookieHeader(token: string): string {
 
 /** Build the Set-Cookie header that clears the session. */
 export function buildClearCookieHeader(): string {
-  return `${COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`;
+  // Must mirror the Secure flag used when setting the cookie.
+  // Without it, browsers on HTTPS refuse to delete a Secure cookie via a
+  // non-Secure deletion header — guest logout would silently do nothing.
+  const isProd = process.env.NODE_ENV === "production";
+  return [
+    `${COOKIE_NAME}=`,
+    "Max-Age=0",
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    isProd ? "Secure" : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
 }

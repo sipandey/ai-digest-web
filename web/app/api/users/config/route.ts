@@ -37,7 +37,7 @@ async function validateNotionCredentials(
   }
 }
 
-// ── shared helper ─────────────────────────────────────────────────────────────
+// ── shared helpers ────────────────────────────────────────────────────────────
 
 async function saveUserConfig(userId: string, values: Record<string, unknown>) {
   return supabaseAdmin
@@ -45,6 +45,18 @@ async function saveUserConfig(userId: string, values: Record<string, unknown>) {
     .upsert({ user_id: userId, ...values }, { onConflict: "user_id" })
     .select()
     .single();
+}
+
+/**
+ * Strip sensitive credential fields before sending user_configs to the client.
+ * notion_token is a write-capable Notion secret — it must never appear in
+ * API responses (would be visible in browser DevTools / network logs).
+ */
+function sanitizeConfig(config: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!config) return null;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { notion_token, ...safe } = config;
+  return safe;
 }
 
 // ── GET /api/users/config ─────────────────────────────────────────────────────
@@ -69,7 +81,7 @@ export async function GET() {
         // Let the UI know which auth method this user is using
         authMethod: user.clerk_id ? "clerk" : "notion",
       },
-      config: user.config,
+      config: sanitizeConfig(user.config as Record<string, unknown> | null),
       notion_connected:
         (user.config as Record<string, unknown> | null)?.notion_connected ?? false,
     });
@@ -124,7 +136,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to save config" }, { status: 500 });
     }
 
-    return NextResponse.json({ config: data });
+    return NextResponse.json({ config: sanitizeConfig(data as Record<string, unknown>) });
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -178,7 +190,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
     }
 
-    return NextResponse.json({ config: data });
+    return NextResponse.json({ config: sanitizeConfig(data as Record<string, unknown>) });
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
