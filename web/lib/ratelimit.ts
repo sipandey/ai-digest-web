@@ -1,9 +1,18 @@
 /**
- * Simple in-memory sliding-window rate limiter.
+ * In-memory sliding-window rate limiter.
  *
- * Limitations: state is per-process, not shared across serverless instances.
- * For a low-traffic project this is sufficient to prevent single-client abuse.
- * Swap for Upstash Redis if you need distributed enforcement later.
+ * ⚠️  LIMITATION: state is per-process. On Vercel each serverless function
+ * invocation may run in a separate instance with fresh memory, so this limiter
+ * is NOT reliably enforced in production — concurrent requests can bypass it.
+ *
+ * It provides a best-effort defence against single-burst abuse on warm instances
+ * (e.g., the same Lambda container handling several requests in quick succession).
+ *
+ * For hard per-user limits (e.g., pipeline daily cap), use a DB-based check
+ * instead (see /api/pipeline/trigger — trigger_count column on pipeline_runs).
+ *
+ * To make this truly distributed, replace the Map with Upstash Redis:
+ *   https://upstash.com/docs/redis/sdks/ratelimit-ts/overview
  *
  * Usage:
  *   const result = rateLimit(ip, { limit: 10, windowMs: 60_000 });

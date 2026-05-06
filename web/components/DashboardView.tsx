@@ -113,6 +113,7 @@ export default function DashboardView() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState("");
+  const [dailyLimitReached, setDailyLimitReached] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -183,7 +184,10 @@ export default function DashboardView() {
         setRuns((await runsRes.json()).runs ?? []);
       } else {
         const data = await res.json();
-        if (res.status === 429 && data.retryAfterSeconds) {
+        if (data.dailyLimitReached) {
+          setDailyLimitReached(true);
+          setTriggerError(data.error ?? "Daily run limit reached.");
+        } else if (res.status === 429 && data.retryAfterSeconds) {
           const mins = Math.ceil(data.retryAfterSeconds / 60);
           setTriggerError(
             `Too soon — please wait ${mins} minute${mins !== 1 ? "s" : ""} before running again.`
@@ -265,6 +269,7 @@ export default function DashboardView() {
           digestHour={config?.digest_hour ?? 7}
           triggering={triggering}
           triggerError={triggerError}
+          dailyLimitReached={dailyLimitReached}
           onTrigger={triggerRun}
         />
 
@@ -287,17 +292,23 @@ function TodayCard({
   digestHour,
   triggering,
   triggerError,
+  dailyLimitReached,
   onTrigger,
 }: {
   run: PipelineRun | null;
   digestHour: number;
   triggering: boolean;
   triggerError: string;
+  dailyLimitReached: boolean;
   onTrigger: () => void;
 }) {
   const status = run?.status ?? "none";
 
-  const runNowBtn = (
+  const runNowBtn = dailyLimitReached ? (
+    <p className="text-xs text-amber-600 font-medium">
+      Daily limit reached — resets tomorrow morning.
+    </p>
+  ) : (
     <button
       onClick={onTrigger}
       disabled={triggering}

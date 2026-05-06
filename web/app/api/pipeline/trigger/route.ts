@@ -4,6 +4,11 @@ import { getAuthUserId } from "@/lib/auth";
 
 type TriggerMode = "direct" | "github_actions";
 
+// Maximum number of manual pipeline triggers allowed per user per day.
+// The scheduled morning run does not count toward this limit (it bypasses
+// this route entirely via GitHub Actions cron).
+const MAX_DAILY_TRIGGERS = 3;
+
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -148,11 +153,10 @@ export async function POST() {
     const today = todayISO();
     const triggerMode = getTriggerMode();
 
-    // Reuse today's run record so users can manually rerun without creating
-    // duplicate same-day rows.
+    // Fetch today's run row — includes trigger_count for the daily cap check.
     const { data: existingRun, error: existingRunError } = await supabaseAdmin
       .from("pipeline_runs")
-      .select("id, status, completed_at")
+      .select("id, status, completed_at, trigger_count")
       .eq("user_id", user.id)
       .eq("run_date", today)
       .maybeSingle();
@@ -163,6 +167,7 @@ export async function POST() {
     }
 
     if (existingRun) {
+      // ── Already in-flight ────────────────────────────────────────────────────
       if (existingRun.status === "pending" || existingRun.status === "running") {
         return NextResponse.json(
           { error: "Digest is already running", status: existingRun.status },
@@ -170,12 +175,23 @@ export async function POST() {
         );
       }
 
-      // Cooldown: block reruns within 5 minutes of the last completion.
-      // This prevents both accidental double-clicks and intentional hammering.
+      // ── Daily cap (DB-based, works across serverless instances) ──────────────
+      const triggerCount = existingRun.trigger_count ?? 1;
+      if (triggerCount >= MAX_DAILY_TRIGGERS) {
+        return NextResponse.json(
+          {
+            error: `You've reached the limit of ${MAX_DAILY_TRIGGERS} manual runs today. Your scheduled digest will run again tomorrow morning.`,
+            dailyLimitReached: true,
+          },
+          { status: 429 }
+        );
+      }
+
+      // ── 5-minute cooldown between reruns ─────────────────────────────────────
       if (existingRun.completed_at) {
         const secondsSinceCompletion =
           (Date.now() - new Date(existingRun.completed_at).getTime()) / 1000;
-        const COOLDOWN_SECONDS = 5 * 60; // 5 minutes
+        const COOLDOWN_SECONDS = 5 * 60;
         if (secondsSinceCompletion < COOLDOWN_SECONDS) {
           const waitSeconds = Math.ceil(COOLDOWN_SECONDS - secondsSinceCompletion);
           const waitMins = Math.ceil(waitSeconds / 60);
@@ -189,9 +205,9 @@ export async function POST() {
         }
       }
 
-      // Atomic reset: only succeeds if status is still a terminal state.
-      // Prevents a race condition where two concurrent requests both see
-      // status=complete and both dispatch a workflow.
+      // ── Atomic reset — only wins if status is still terminal ─────────────────
+      // Prevents a race where two concurrent requests both see status=complete
+      // and both dispatch a workflow.
       const { data: rerun, error: updateError } = await supabaseAdmin
         .from("pipeline_runs")
         .update({
@@ -203,17 +219,18 @@ export async function POST() {
           error_message: null,
           started_at: null,
           completed_at: null,
+          trigger_count: triggerCount + 1,
         })
         .eq("id", existingRun.id)
         .not("status", "in", '("pending","running")')
-        .select("id")
+        .select("id, trigger_count")
         .single();
 
       if (updateError) {
         console.error("Reset pipeline_run error:", updateError);
         return NextResponse.json({ error: "Failed to queue rerun" }, { status: 500 });
       }
-      // Atomic update found no matching row — another concurrent request won the race.
+      // Atomic update matched nothing — another concurrent request won the race.
       if (!rerun) {
         return NextResponse.json(
           { error: "Digest is already running", status: "pending" },
@@ -236,13 +253,15 @@ export async function POST() {
         throw dispatchError;
       }
 
+      const runsLeft = MAX_DAILY_TRIGGERS - (rerun.trigger_count ?? triggerCount + 1);
       console.log(
-        `Pipeline retriggered for user ${user.id} (run ${rerun.id}) via ${triggerMode}`
+        `Pipeline retriggered for user ${user.id} (run ${rerun.id}) via ${triggerMode} — ${runsLeft} manual trigger(s) remaining today`
       );
 
       return NextResponse.json({
         success: true,
         runId: rerun.id,
+        runsRemainingToday: runsLeft,
         message:
           triggerMode === "github_actions"
             ? "Your digest was queued in GitHub Actions. Check back in a few minutes."
@@ -250,10 +269,10 @@ export async function POST() {
       });
     }
 
-    // Insert pending run record
+    // ── First trigger today — insert the run row ──────────────────────────────
     const { data: run, error: insertError } = await supabaseAdmin
       .from("pipeline_runs")
-      .insert({ user_id: user.id, run_date: today, status: "pending" })
+      .insert({ user_id: user.id, run_date: today, status: "pending", trigger_count: 1 })
       .select("id")
       .single();
 
@@ -282,6 +301,7 @@ export async function POST() {
     return NextResponse.json({
       success: true,
       runId: run.id,
+      runsRemainingToday: MAX_DAILY_TRIGGERS - 1,
       message:
         triggerMode === "github_actions"
           ? "Your digest was queued in GitHub Actions. Check back in a few minutes."
