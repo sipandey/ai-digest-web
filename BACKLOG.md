@@ -58,9 +58,9 @@ CSP is now generated dynamically per request in `proxy.ts` with a cryptographic 
 
 ---
 
-### H-3. Users can set their own `active` flag — admin bans are self-reversible
-**File:** `web/app/api/users/config/route.ts` — PATCH handler `ALLOWED_FIELDS`  
-`active` is in the PATCH allowlist, so any user can PATCH `{ active: true }` to reactivate a banned account. Remove `active` from `ALLOWED_FIELDS`. Deactivation must be admin-only.
+### ~~H-3. Users can set their own `active` flag — admin bans are self-reversible~~ ✅ Fixed
+**File:** `web/app/api/users/config/route.ts` — PATCH handler `ALLOWED_FIELDS`
+Removed `active` from `ALLOWED_FIELDS`. A comment explains the intent. Account activation/deactivation must be performed directly in the database (or via a future admin route), never by the user.
 
 ---
 

@@ -190,7 +190,8 @@ export async function PATCH(req: NextRequest) {
       digestHour: "digest_hour",
       timezoneOffset: "timezone_offset",
       scoringPriorities: "scoring_priorities",
-      active: "active",
+      // `active` is intentionally excluded — account activation/deactivation
+      // must only be performed by an admin, never by the user themselves.
       notion_token: "notion_token",
       notion_database_id: "notion_database_id",
       notion_connected: "notion_connected",
