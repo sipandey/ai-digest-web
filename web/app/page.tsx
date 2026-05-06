@@ -298,10 +298,15 @@ export default function LandingPage() {
         <p className="text-sm font-semibold text-gray-700">AI Digest</p>
         <p className="text-xs text-gray-400 mt-1">Built for developers learning AI</p>
         <div className="mt-5 flex items-center justify-center gap-6">
-          <a href="#" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+          <a
+            href="https://github.com/sipandey/ai-digest-web"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          >
             GitHub
           </a>
-          <a href="#" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+          <a href="/privacy" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
             Privacy
           </a>
         </div>
