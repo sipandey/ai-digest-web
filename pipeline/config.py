@@ -2,6 +2,7 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from encryption import decrypt_if_encrypted
 
 load_dotenv()
 
@@ -13,6 +14,22 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
 _PAGE_SIZE = 1000  # Supabase default cap; fetch in pages to handle > 1000 users
+
+_ENCRYPTED_FIELDS = ("notion_token", "notion_database_id")
+
+
+def _decrypt_user_row(row: dict) -> dict:
+    """Decrypt application-layer-encrypted credential fields in a user_configs row.
+
+    Uses decrypt_if_encrypted() so legacy plaintext rows (pre-migration) are
+    returned unchanged — the pipeline continues to work during the migration
+    window.
+    """
+    for field in _ENCRYPTED_FIELDS:
+        value = row.get(field)
+        if isinstance(value, str) and value:
+            row[field] = decrypt_if_encrypted(value)
+    return row
 
 
 def get_active_users(user_id: Optional[str] = None) -> list[dict]:
@@ -32,7 +49,11 @@ def get_active_users(user_id: Optional[str] = None) -> list[dict]:
             .eq("user_id", user_id)
             .execute()
         )
-        return [r for r in response.data if r.get("users", {}).get("active", True)]
+        return [
+            _decrypt_user_row(r)
+            for r in response.data
+            if r.get("users", {}).get("active", True)
+        ]
 
     all_rows: list[dict] = []
     offset = 0
@@ -46,7 +67,11 @@ def get_active_users(user_id: Optional[str] = None) -> list[dict]:
             .execute()
         )
         page = response.data or []
-        all_rows.extend(r for r in page if r.get("users", {}).get("active", True))
+        all_rows.extend(
+            _decrypt_user_row(r)
+            for r in page
+            if r.get("users", {}).get("active", True)
+        )
         if len(page) < _PAGE_SIZE:
             break  # last page
         offset += _PAGE_SIZE

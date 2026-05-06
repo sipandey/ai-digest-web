@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getAuthUserId, resolveUserById } from "@/lib/auth";
+import { encrypt, decrypt } from "@/lib/encryption";
 
 // ── Notion validation helper (mirrors /api/guest/setup) ──────────────────────
 
@@ -48,15 +49,35 @@ async function saveUserConfig(userId: string, values: Record<string, unknown>) {
 }
 
 /**
- * Strip sensitive credential fields before sending user_configs to the client.
- * notion_token is a write-capable Notion secret — it must never appear in
- * API responses (would be visible in browser DevTools / network logs).
+ * Prepare a user_configs row for sending to the client:
+ *   1. Strip notion_token — it is a write-capable Notion secret and must never
+ *      appear in API responses (visible in browser DevTools / network logs).
+ *   2. Decrypt notion_database_id so the Settings UI can display the connected
+ *      database ID in plaintext.
+ *
+ * All other fields are returned as-is.
  */
-function sanitizeConfig(config: Record<string, unknown> | null): Record<string, unknown> | null {
+async function prepareConfigForResponse(
+  config: Record<string, unknown> | null,
+): Promise<Record<string, unknown> | null> {
   if (!config) return null;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { notion_token, ...safe } = config;
-  return safe;
+  const { notion_token, notion_database_id, ...rest } = config;
+
+  let dbId: string | undefined;
+  if (typeof notion_database_id === "string" && notion_database_id) {
+    try {
+      dbId = await decrypt(notion_database_id);
+    } catch {
+      // Decryption failure — omit rather than expose ciphertext
+      dbId = undefined;
+    }
+  }
+
+  return {
+    ...rest,
+    ...(dbId !== undefined ? { notion_database_id: dbId } : {}),
+  };
 }
 
 // ── GET /api/users/config ─────────────────────────────────────────────────────
@@ -81,7 +102,7 @@ export async function GET() {
         // Let the UI know which auth method this user is using
         authMethod: user.clerk_id ? "clerk" : "notion",
       },
-      config: sanitizeConfig(user.config as Record<string, unknown> | null),
+      config: await prepareConfigForResponse(user.config as Record<string, unknown> | null),
       notion_connected:
         (user.config as Record<string, unknown> | null)?.notion_connected ?? false,
     });
@@ -110,8 +131,8 @@ export async function POST(req: NextRequest) {
       timezoneOffset,
     } = body;
 
-    // Validate Notion credentials before persisting — identical logic to
-    // /api/guest/setup so we don't store credentials that won't work.
+    // Validate Notion credentials before persisting — uses plaintext values
+    // from the request body, before encryption.
     const check = await validateNotionCredentials(
       String(notionToken ?? ""),
       String(notionDatabaseId ?? ""),
@@ -120,9 +141,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: check.error }, { status: 400 });
     }
 
+    // Encrypt credentials at the application layer before persisting.
+    const [encryptedToken, encryptedDatabaseId] = await Promise.all([
+      encrypt(String(notionToken)),
+      encrypt(String(notionDatabaseId)),
+    ]);
+
     const { data, error } = await saveUserConfig(userId, {
-      notion_token: notionToken,
-      notion_database_id: notionDatabaseId,
+      notion_token: encryptedToken,
+      notion_database_id: encryptedDatabaseId,
       notion_connected: true,
       topics,
       profile_description: profileDescription,
@@ -136,7 +163,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to save config" }, { status: 500 });
     }
 
-    return NextResponse.json({ config: sanitizeConfig(data as Record<string, unknown>) });
+    return NextResponse.json({ config: await prepareConfigForResponse(data as Record<string, unknown>) });
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -183,6 +210,14 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
+    // Encrypt credential fields when they are being updated.
+    if (typeof updates["notion_token"] === "string" && updates["notion_token"]) {
+      updates["notion_token"] = await encrypt(updates["notion_token"] as string);
+    }
+    if (typeof updates["notion_database_id"] === "string" && updates["notion_database_id"]) {
+      updates["notion_database_id"] = await encrypt(updates["notion_database_id"] as string);
+    }
+
     const { data, error } = await saveUserConfig(userId, updates);
 
     if (error) {
@@ -190,7 +225,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
     }
 
-    return NextResponse.json({ config: sanitizeConfig(data as Record<string, unknown>) });
+    return NextResponse.json({ config: await prepareConfigForResponse(data as Record<string, unknown>) });
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

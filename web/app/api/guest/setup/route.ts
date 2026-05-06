@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { createSessionToken, buildSetCookieHeader } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
+import { encrypt } from "@/lib/encryption";
 
 const NOTION_VERSION = "2022-06-28";
 
@@ -134,13 +135,19 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 4. Upsert user_configs row ─────────────────────────────────────────────
+  // Encrypt credentials at the application layer before persisting.
+  const [encryptedToken, encryptedDatabaseId] = await Promise.all([
+    encrypt(notionToken),
+    encrypt(notionDatabaseId),
+  ]);
+
   const { error: configError } = await supabaseAdmin
     .from("user_configs")
     .upsert(
       {
         user_id: user.id,
-        notion_token: notionToken,
-        notion_database_id: notionDatabaseId,
+        notion_token: encryptedToken,
+        notion_database_id: encryptedDatabaseId,
         notion_connected: true,
         topics: Array.isArray(topics) ? topics : [],
         profile_description:

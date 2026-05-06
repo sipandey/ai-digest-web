@@ -1,4 +1,5 @@
 arxiv
+cryptography
 openai
 notion-client
 python-dotenv

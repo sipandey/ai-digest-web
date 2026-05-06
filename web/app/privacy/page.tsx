@@ -28,7 +28,7 @@ export default function PrivacyPage() {
             <ul className="list-disc list-inside space-y-2">
               <li><span className="font-medium text-[#14141e]">Account info</span> — your email address and name, used to identify your account and send service emails.</li>
               <li><span className="font-medium text-[#14141e]">Profile &amp; preferences</span> — your project description, experience level, topics, and digest delivery time, used solely to personalise your digest.</li>
-              <li><span className="font-medium text-[#14141e]">Notion integration token &amp; database ID</span> — stored encrypted at rest; used only to write your daily digest pages to your Notion workspace.</li>
+              <li><span className="font-medium text-[#14141e]">Notion integration token &amp; database ID</span> — encrypted at the application layer (AES-256-GCM) before being stored in the database; used only to write your daily digest pages to your Notion workspace.</li>
               <li><span className="font-medium text-[#14141e]">Pipeline logs</span> — run timestamps and paper counts, used for debugging and delivery confirmation. No paper content is stored server-side.</li>
             </ul>
           </section>

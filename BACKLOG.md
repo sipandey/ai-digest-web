@@ -5,6 +5,39 @@ Pick them up in priority order when ready.
 
 ---
 
+## ⚖️ Legal / Compliance (fix before going public)
+
+### ~~Legal-1. Privacy policy falsely states Notion token is "encrypted at rest"~~ ✅ Fixed
+**Files:** `web/lib/encryption.ts` (new), `web/app/api/users/config/route.ts`, `web/app/api/guest/setup/route.ts`, `pipeline/encryption.py` (new), `pipeline/config.py`
+Implemented AES-256-GCM application-layer encryption for `notion_token` and `notion_database_id` using the Web Crypto API (TypeScript) and `cryptography` library (Python). Both fields are encrypted before every DB write and decrypted on read. `notion_database_id` is decrypted in API responses for the Settings UI; `notion_token` is stripped from all responses. Privacy policy updated to say "encrypted at the application layer (AES-256-GCM)".
+**Required action:** Run `web/scripts/encrypt-existing-tokens.mjs` once to back-fill encryption on any existing plaintext rows. Add `NOTION_TOKEN_ENCRYPTION_KEY` (64 hex chars, `openssl rand -hex 32`) to all environments (Vercel, GitHub Actions, local `.env`). See also I-3 (now resolved by this fix).
+
+---
+
+### Legal-2. Privacy policy promises token deletion on account closure — code does not honour it
+**Files:** `web/app/privacy/page.tsx`, `web/app/api/auth/webhook/route.ts`
+The policy states: *"Your Notion integration token is deleted immediately upon account deletion."* The `user.deleted` webhook handler sets `users.active = false` and stops there. It does **not** delete the token or any user data. This creates specific legal liability beyond the general GDPR gap in L-3 — you are making an explicit, time-bound promise ("immediately") that the code breaks.
+**Fix:** Resolve L-3 first (hard-delete on `user.deleted`), then verify the privacy policy wording matches. See L-3 for the concrete SQL fix.
+
+---
+
+### Legal-3. No Terms of Service
+There is a privacy policy but no Terms of Service. Without one you have no contractual basis to:
+- Suspend or ban abusive accounts
+- Limit liability for service interruptions or incorrect AI summaries
+- Disclaim warranty on AI-generated digest content (summaries can be inaccurate)
+- Restrict use to individuals (not competitors scraping your pipeline)
+**Fix:** Add a minimal ToS page at `/terms`. At minimum cover: acceptable use, no warranty on AI outputs, right to terminate accounts, governing law/jurisdiction. Standard free-service templates exist and do not require a lawyer.
+
+---
+
+### Legal-4. Data residency claim in privacy policy may be factually wrong
+**File:** `web/app/privacy/page.tsx`
+The policy states data is stored in *"EU (AWS eu-west-1)"*. This is only true if the Supabase project was created in that region. The default Supabase region is `us-east-1`. If the project is in any other region, the statement is false — which matters for GDPR (EU data subjects expect EU storage).
+**Fix:** Check **Supabase → Project Settings → General → Region** and update the privacy policy to match the actual region.
+
+---
+
 ## 🔴 Critical / High — Security (fix before going public)
 
 ### ~~C-1. Notion token returned in GET /api/users/config response~~ ✅ Fixed
@@ -123,7 +156,10 @@ Guest users require no email. One person can create unlimited accounts using dif
 ### M-8. System-wide daily pipeline run budget / circuit breaker
 **File:** `web/app/api/pipeline/trigger/route.ts`  
 No cap on total pipeline runs across all users. Viral growth or a multi-account abuser could trigger large OpenAI bills before you notice.  
-**Fix:** Count `pipeline_runs WHERE run_date = today` on each trigger. If total ≥ budget (e.g. 200), return 503. Alternatively, set a hard spend limit in the OpenAI dashboard (Settings → Limits).
+**Fix:** Count `pipeline_runs WHERE run_date = today` on each trigger. If total ≥ budget (e.g. 200), return 503. Alternatively, set a hard spend limit in the OpenAI dashboard (Settings → Limits).  
+**Quick mitigation (do immediately):** Set a monthly budget cap in **OpenAI dashboard → Settings → Limits**. Takes 30 seconds and caps worst-case financial exposure to a fixed number while the code fix is built.
+
+**Note — GitHub Actions minutes:** Each pipeline run consumes ~2–5 minutes of GitHub Actions time. The free tier is 2,000 min/month on private repos. At scale (100 users × 3 manual triggers + hourly scheduled runs) you can exceed this. GitHub charges ~$0.008/min beyond the free tier — not large, but non-zero. Monitor via **GitHub → Repository → Settings → Billing**.
 
 ---
 
@@ -145,6 +181,7 @@ No cap on total pipeline runs across all users. Viral growth or a multi-account 
 ### L-3. `user.deleted` webhook does not purge user data (GDPR)
 **File:** `web/app/api/auth/webhook/route.ts`  
 Account deletion sets `users.active = false` but leaves all rows intact — `user_configs` (including Notion token), `pipeline_runs`, `user_delivered_papers`, `paper_rankings_cache`. This may not satisfy GDPR/CCPA right-to-erasure if a user deletes their Clerk account expecting their data to be removed.  
+**Note:** The privacy policy explicitly states *"Your Notion integration token is deleted immediately upon account deletion"* — fixing this is also required to make the policy truthful (see Legal-2).  
 **Fix:** On `user.deleted`, cascade-delete or anonymise all rows keyed on `user_id`. The foreign-key `ON DELETE CASCADE` constraints already exist — a hard `DELETE FROM users WHERE clerk_id = $1` will remove everything.
 
 ---
@@ -179,11 +216,9 @@ Migrations are SQL files committed to the repo but must be run manually in the S
 
 ---
 
-### I-3. Notion token stored in plaintext in user_configs
-**Column:** `user_configs.notion_token`  
-The Notion integration token is stored as plaintext in Postgres. If the database is compromised the tokens are immediately usable.  
-**Fix:** Encrypt at the application layer before write, decrypt on read. Use `AES-256-GCM` with a `NOTION_TOKEN_ENCRYPTION_KEY` env var. Supabase Vault (available on Pro plan) is an alternative.  
-**Note:** Supabase encrypts data at rest at the storage level, so this is defence-in-depth rather than an urgent gap.
+### ~~I-3. Notion token stored in plaintext in user_configs~~ ✅ Fixed
+**Column:** `user_configs.notion_token` (and `notion_database_id`)
+Both credential fields are now encrypted at the application layer (AES-256-GCM) before every DB write, and decrypted on read. See Legal-1 for implementation details.
 
 ---
 
