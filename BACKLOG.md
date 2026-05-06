@@ -26,10 +26,9 @@ Added a 12-section Terms of Service page at `/terms` covering: service descripti
 
 ---
 
-### Legal-4. Data residency claim in privacy policy may be factually wrong
+### ~~Legal-4. Data residency claim in privacy policy may be factually wrong~~ ✅ Fixed
 **File:** `web/app/privacy/page.tsx`
-The policy states data is stored in *"EU (AWS eu-west-1)"*. This is only true if the Supabase project was created in that region. The default Supabase region is `us-east-1`. If the project is in any other region, the statement is false — which matters for GDPR (EU data subjects expect EU storage).
-**Fix:** Check **Supabase → Project Settings → General → Region** and update the privacy policy to match the actual region.
+Updated to reflect the actual Supabase project region: Singapore (AWS ap-southeast-1). Previous wording incorrectly stated EU (eu-west-1).
 
 ---
 

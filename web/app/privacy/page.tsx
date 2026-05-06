@@ -46,7 +46,7 @@ export default function PrivacyPage() {
             <h2 className="text-base font-semibold text-[#14141e] mb-3">Third-party services</h2>
             <ul className="list-disc list-inside space-y-2">
               <li><span className="font-medium text-[#14141e]">Clerk</span> — authentication for email/password accounts. Clerk's own privacy policy applies to data processed through their service.</li>
-              <li><span className="font-medium text-[#14141e]">Supabase</span> — database and storage. Data is stored in the EU (AWS eu-west-1) region by default.</li>
+              <li><span className="font-medium text-[#14141e]">Supabase</span> — database and storage. Data is stored in Singapore (AWS ap-southeast-1).</li>
               <li><span className="font-medium text-[#14141e]">OpenAI</span> — used to summarise papers and score relevance during each pipeline run. Paper abstracts are sent to OpenAI's API; no personal data is included in these requests.</li>
               <li><span className="font-medium text-[#14141e]">Notion</span> — your integration token is used to write digest pages to your workspace via Notion's official API.</li>
             </ul>
