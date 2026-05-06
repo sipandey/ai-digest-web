@@ -14,6 +14,7 @@ from pipeline_config import (
     ARXIV_CLIENT_PAGE_SIZE,
     ARXIV_CLIENT_DELAY_SECONDS,
     ARXIV_CLIENT_NUM_RETRIES,
+    ARXIV_INTER_CATEGORY_DELAY_SECONDS,
     WEEKDAY_WINDOW_DAYS,
     WEEKEND_WINDOW_DAYS,
     KEYWORD_GROUPS,
@@ -181,6 +182,17 @@ def fetch_papers(run_date: str) -> list[dict]:
             matched_in_category += 1
 
         log.info("%s: %d papers passed keyword filter", category, matched_in_category)
+
+        # Pause between categories so arXiv doesn't rate-limit the next request.
+        # The per-page delay (ARXIV_CLIENT_DELAY_SECONDS) only applies within a
+        # single search; without this sleep the next category starts immediately
+        # and arXiv sees back-to-back requests ~3s apart, triggering a 429.
+        if category != ARXIV_CATEGORIES[-1] and ARXIV_INTER_CATEGORY_DELAY_SECONDS > 0:
+            log.info(
+                "Sleeping %gs before next category to respect arXiv rate limit",
+                ARXIV_INTER_CATEGORY_DELAY_SECONDS,
+            )
+            time.sleep(ARXIV_INTER_CATEGORY_DELAY_SECONDS)
 
     for group_name, count in group_counts.items():
         log.info("Group '%s': %d papers", group_name, count)

@@ -26,8 +26,12 @@ MAX_AUTHORS_DISPLAYED: int = 5
 
 # arXiv API client settings.
 ARXIV_CLIENT_PAGE_SIZE: int = 100
-ARXIV_CLIENT_DELAY_SECONDS: float = 3.0
+ARXIV_CLIENT_DELAY_SECONDS: float = 5.0   # delay between pages within a single category search
 ARXIV_CLIENT_NUM_RETRIES: int = 3
+# Seconds to sleep between finishing one arXiv category and starting the next.
+# Without this, consecutive category fetches arrive ~3s apart and arXiv 429s
+# after ~6 rapid requests regardless of the per-page delay above.
+ARXIV_INTER_CATEGORY_DELAY_SECONDS: float = 12.0
 
 # Seconds to wait and re-check the cache after a miss before crawling arXiv.
 # If two user pipelines start simultaneously, one will populate the cache
