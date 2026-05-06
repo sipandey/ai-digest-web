@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (userError || !user) {
-    console.error("guest setup — upsert user error:", userError);
+    console.error("guest setup — upsert user error:", JSON.stringify(userError));
     // Could be an email uniqueness conflict (email already belongs to a Clerk user)
     if (userError?.code === "23505") {
       return NextResponse.json(
@@ -124,7 +124,13 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
-    return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Failed to create account",
+        detail: userError?.message ?? "unknown db error",
+      },
+      { status: 500 },
+    );
   }
 
   // ── 4. Upsert user_configs row ─────────────────────────────────────────────
