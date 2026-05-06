@@ -183,7 +183,14 @@ export default function DashboardView() {
         setRuns((await runsRes.json()).runs ?? []);
       } else {
         const data = await res.json();
-        setTriggerError(data.error ?? "Trigger failed — please try again.");
+        if (res.status === 429 && data.retryAfterSeconds) {
+          const mins = Math.ceil(data.retryAfterSeconds / 60);
+          setTriggerError(
+            `Too soon — please wait ${mins} minute${mins !== 1 ? "s" : ""} before running again.`
+          );
+        } else {
+          setTriggerError(data.error ?? "Trigger failed — please try again.");
+        }
       }
     } catch {
       setTriggerError("Network error — please try again.");

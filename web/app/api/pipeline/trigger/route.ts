@@ -152,7 +152,7 @@ export async function POST() {
     // duplicate same-day rows.
     const { data: existingRun, error: existingRunError } = await supabaseAdmin
       .from("pipeline_runs")
-      .select("id, status")
+      .select("id, status, completed_at")
       .eq("user_id", user.id)
       .eq("run_date", today)
       .maybeSingle();
@@ -170,6 +170,28 @@ export async function POST() {
         );
       }
 
+      // Cooldown: block reruns within 5 minutes of the last completion.
+      // This prevents both accidental double-clicks and intentional hammering.
+      if (existingRun.completed_at) {
+        const secondsSinceCompletion =
+          (Date.now() - new Date(existingRun.completed_at).getTime()) / 1000;
+        const COOLDOWN_SECONDS = 5 * 60; // 5 minutes
+        if (secondsSinceCompletion < COOLDOWN_SECONDS) {
+          const waitSeconds = Math.ceil(COOLDOWN_SECONDS - secondsSinceCompletion);
+          const waitMins = Math.ceil(waitSeconds / 60);
+          return NextResponse.json(
+            {
+              error: `Please wait ${waitMins} minute${waitMins !== 1 ? "s" : ""} before running again.`,
+              retryAfterSeconds: waitSeconds,
+            },
+            { status: 429 }
+          );
+        }
+      }
+
+      // Atomic reset: only succeeds if status is still a terminal state.
+      // Prevents a race condition where two concurrent requests both see
+      // status=complete and both dispatch a workflow.
       const { data: rerun, error: updateError } = await supabaseAdmin
         .from("pipeline_runs")
         .update({
@@ -183,12 +205,20 @@ export async function POST() {
           completed_at: null,
         })
         .eq("id", existingRun.id)
+        .not("status", "in", '("pending","running")')
         .select("id")
         .single();
 
       if (updateError) {
         console.error("Reset pipeline_run error:", updateError);
         return NextResponse.json({ error: "Failed to queue rerun" }, { status: 500 });
+      }
+      // Atomic update found no matching row — another concurrent request won the race.
+      if (!rerun) {
+        return NextResponse.json(
+          { error: "Digest is already running", status: "pending" },
+          { status: 400 }
+        );
       }
 
       try {
