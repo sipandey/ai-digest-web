@@ -86,8 +86,19 @@ def _truncate_words(text: str, max_words: int) -> str:
 
 def _active_criteria(user_config: dict) -> list[str]:
     priorities = user_config.get("scoring_priorities") or {}
-    active = [key for key, enabled in priorities.items() if enabled]
-    return active if active else list(DEFAULT_ACTIVE_CRITERIA)
+    # scoring_priorities may arrive as a JSON string if the column type is text.
+    if isinstance(priorities, str):
+        try:
+            priorities = json.loads(priorities)
+        except Exception:
+            priorities = {}
+    # Only keep keys that exist in SCORING_CRITERIA — unknown keys (e.g. a
+    # stale "novelty" entry that should be "novelty_timing") are silently
+    # dropped rather than passed to the LLM in an incomplete rubric.
+    active = [key for key, enabled in priorities.items() if enabled and key in SCORING_CRITERIA]
+    if not active:
+        return list(DEFAULT_ACTIVE_CRITERIA)
+    return active
 
 
 def _user_context(user_config: dict) -> tuple[str, str, str]:
@@ -785,9 +796,17 @@ def rank_papers(
     # ── Phase 2: score cache misses ───────────────────────────────────────────
     batch_label = (user_id or "anon")[:16]
     if use_batch:
-        score_map, n_score_calls = _score_batches_batch_api(
-            papers_to_score, user_config, client, batch_label
-        )
+        try:
+            score_map, n_score_calls = _score_batches_batch_api(
+                papers_to_score, user_config, client, batch_label
+            )
+        except (TimeoutError, RuntimeError) as batch_exc:
+            # Batch API timed out or failed (e.g. OpenAI queue backlog).
+            # Fall back to synchronous calls so the user still gets a digest.
+            log.warning(
+                "Batch scoring failed (%s) — falling back to synchronous API", batch_exc
+            )
+            score_map, n_score_calls = _score_batches(papers_to_score, user_config, client)
     else:
         score_map, n_score_calls = _score_batches(papers_to_score, user_config, client)
 
@@ -822,9 +841,17 @@ def rank_papers(
 
     # ── Phase 3: summarize passing papers not fully in cache ──────────────────
     if use_batch:
-        summaries, n_summary_calls = _summarize_batches_batch_api(
-            papers_to_summarize, user_config, client, batch_label
-        )
+        try:
+            summaries, n_summary_calls = _summarize_batches_batch_api(
+                papers_to_summarize, user_config, client, batch_label
+            )
+        except (TimeoutError, RuntimeError) as batch_exc:
+            log.warning(
+                "Batch summarisation failed (%s) — falling back to synchronous API", batch_exc
+            )
+            summaries, n_summary_calls = _summarize_batches(
+                papers_to_summarize, user_config, client
+            )
     else:
         summaries, n_summary_calls = _summarize_batches(papers_to_summarize, user_config, client)
 
