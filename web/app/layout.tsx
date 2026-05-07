@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { headers } from "next/headers";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -30,13 +31,25 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Read the per-request CSP nonce set by proxy.ts middleware and forward it
+  // to ClerkProvider so Clerk can apply it to the <script> tags it injects.
+  //
+  // Without this, Clerk injects scripts without a nonce attribute. The CSP in
+  // proxy.ts uses 'strict-dynamic', which causes browsers to IGNORE 'self' and
+  // hostname allowlists for <script> tags in HTML markup — only nonce-tagged
+  // scripts (and scripts they dynamically load) are trusted. Un-nonce'd Clerk
+  // scripts are therefore blocked, Clerk throws during hydration, and React
+  // aborts hydration for the entire page tree, making all onClick handlers and
+  // useState updates non-functional.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
-    <ClerkProvider>
+    <ClerkProvider nonce={nonce}>
       <html lang="en" className={inter.className}>
         <body>{children}</body>
       </html>
