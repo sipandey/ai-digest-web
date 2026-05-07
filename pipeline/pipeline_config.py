@@ -220,8 +220,13 @@ OPENAI_RETRY_MAX_WAIT_SECONDS: int = 60
 BATCH_POLL_INTERVAL: int = 30
 
 # Maximum seconds to wait for a batch job before raising TimeoutError.
-# OpenAI's Batch API SLA is 24 hours; 2 hours is a conservative ceiling.
-BATCH_TIMEOUT: int = 7_200
+# OpenAI's SLA is 24 hours but typical small jobs complete in 1–10 minutes.
+# Set to 1800s (30 min) so that a stalled batch falls back to the synchronous
+# path quickly — the user's digest arrives at most 30 min late instead of
+# failing entirely. Do NOT raise this above ~1800 without also accepting that
+# the GitHub Actions job (and the user's dashboard "running" state) will be
+# blocked for the full duration before the sync fallback fires.
+BATCH_TIMEOUT: int = 1_800
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
