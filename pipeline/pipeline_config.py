@@ -18,20 +18,36 @@ Edit this file to change:
 # Full list: https://arxiv.org/category_taxonomy
 ARXIV_CATEGORIES: list[str] = ["cs.LG", "cs.CL", "cs.IR", "cs.AI", "cs.CV"]
 
-# Maximum papers to pull per category per day (arXiv's default page is 100).
-MAX_RESULTS_PER_CATEGORY: int = 150
+# Maximum papers to pull per category per day.
+#
+# IMPORTANT: keep this at or below ARXIV_CLIENT_PAGE_SIZE (100).
+# arXiv's API returns results in pages of up to 100 entries.  Requesting
+# more than 100 triggers a second HTTP request mid-category, which reliably
+# produces a 429 (Too Many Requests) from arXiv's rate limiter — even with
+# the 5-second inter-page delay — because we are already making five
+# back-to-back category requests with only a 12-second gap between them.
+# Staying within one page per category avoids all mid-category pagination
+# and eliminates this failure mode entirely.
+MAX_RESULTS_PER_CATEGORY: int = 100
 
 # Number of author names to store per paper (rest are truncated).
 MAX_AUTHORS_DISPLAYED: int = 5
 
 # arXiv API client settings.
 ARXIV_CLIENT_PAGE_SIZE: int = 100
-ARXIV_CLIENT_DELAY_SECONDS: float = 5.0   # delay between pages within a single category search
+ARXIV_CLIENT_DELAY_SECONDS: float = 10.0  # delay between pages (only relevant if MAX_RESULTS_PER_CATEGORY > PAGE_SIZE)
 ARXIV_CLIENT_NUM_RETRIES: int = 3
 # Seconds to sleep between finishing one arXiv category and starting the next.
-# Without this, consecutive category fetches arrive ~3s apart and arXiv 429s
-# after ~6 rapid requests regardless of the per-page delay above.
-ARXIV_INTER_CATEGORY_DELAY_SECONDS: float = 12.0
+# Without this, consecutive category fetches arrive too rapidly and arXiv
+# rate-limits the next request (HTTP 429).
+ARXIV_INTER_CATEGORY_DELAY_SECONDS: float = 15.0
+
+# 429 retry settings for the application-level backoff wrapper in fetcher.py.
+# When arXiv returns 429 (even after the library's own retries are exhausted),
+# the fetcher sleeps for ARXIV_429_BASE_DELAY * 2^attempt seconds before
+# re-running the entire search for that category.
+ARXIV_429_MAX_RETRIES: int = 3          # total application-level retries per category
+ARXIV_429_BASE_DELAY_SECONDS: int = 90  # 90 s → 180 s → 360 s
 
 # Seconds to wait and re-check the cache after a miss before crawling arXiv.
 # If two user pipelines start simultaneously, one will populate the cache

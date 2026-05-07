@@ -19,6 +19,8 @@ from pipeline_config import (
     WEEKEND_WINDOW_DAYS,
     KEYWORD_GROUPS,
     FETCH_CONCURRENT_RETRY_DELAY_SECONDS,
+    ARXIV_429_MAX_RETRIES,
+    ARXIV_429_BASE_DELAY_SECONDS,
 )
 
 log = logging.getLogger(__name__)
@@ -31,6 +33,41 @@ GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
     )
     for name, keywords in KEYWORD_GROUPS
 ]
+
+
+def _fetch_results(client: arxiv.Client, search: arxiv.Search, category: str) -> list[arxiv.Result]:
+    """Fetch all results for *search* with application-level 429 retry.
+
+    The arxiv library retries each individual HTTP request up to
+    ARXIV_CLIENT_NUM_RETRIES times, but it uses the same short
+    ARXIV_CLIENT_DELAY_SECONDS between attempts — not nearly enough for
+    arXiv's rate limiter to reset after a 429.
+
+    This wrapper catches the final HTTPError (status 429) that escapes the
+    library and re-runs the entire search with an exponential backoff:
+      attempt 1 → sleep ARXIV_429_BASE_DELAY_SECONDS  (default 90 s)
+      attempt 2 → sleep ARXIV_429_BASE_DELAY_SECONDS × 2  (180 s)
+      attempt 3 → sleep ARXIV_429_BASE_DELAY_SECONDS × 4  (360 s)
+    After all retries are exhausted the exception propagates and the pipeline
+    marks the run as failed via _fail_pending_runs().
+    """
+    for attempt in range(ARXIV_429_MAX_RETRIES + 1):
+        try:
+            return list(client.results(search))
+        except arxiv.HTTPError as exc:
+            if exc.status == 429 and attempt < ARXIV_429_MAX_RETRIES:
+                wait = ARXIV_429_BASE_DELAY_SECONDS * (2 ** attempt)
+                log.warning(
+                    "arXiv 429 on %s (application retry %d/%d) — sleeping %ds before retry",
+                    category,
+                    attempt + 1,
+                    ARXIV_429_MAX_RETRIES,
+                    wait,
+                )
+                time.sleep(wait)
+            else:
+                raise
+    return []  # unreachable — loop always raises or returns
 
 
 def _arxiv_id(result: arxiv.Result) -> str:
@@ -126,7 +163,7 @@ def fetch_papers(run_date: str) -> list[dict]:
             sort_order=arxiv.SortOrder.Descending,
         )
 
-        results = list(client.results(search))
+        results = _fetch_results(client, search, category)
         if results:
             newest = max(result.published.date() for result in results)
             oldest = min(result.published.date() for result in results)
