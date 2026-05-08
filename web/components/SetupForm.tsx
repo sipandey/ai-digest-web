@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { TIMEZONES, fmtRawOffset, detectTimezoneOffset } from "@/lib/timezones";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,7 @@ type FormState = {
   profileDescription: string;
   experienceLevel: ExperienceLevel;
   digestHour: number;
-  timezoneOffset: number;
+  timezoneOffset: number; // decimal hours, e.g. 5.5 for IST
   email: string;
 };
 
@@ -50,17 +51,11 @@ const SUGGESTED_TOPICS = [
 ];
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const TIMEZONE_OFFSETS = Array.from({ length: 27 }, (_, i) => i - 12); // -12 … +14
 
 function fmtHour(h: number): string {
   const period = h < 12 ? "AM" : "PM";
   const display = h % 12 === 0 ? 12 : h % 12;
   return `${display}:00 ${period}`;
-}
-
-function fmtOffset(o: number): string {
-  if (o === 0) return "UTC±0";
-  return o > 0 ? `UTC+${o}` : `UTC${o}`;
 }
 
 const STEPS: Step[] = ["notion", "profile", "schedule", "done"];
@@ -77,16 +72,16 @@ export default function SetupForm() {
   const router = useRouter();
 
   const [step, setStep] = useState<Step>("notion");
-  const [form, setForm] = useState<FormState>({
+  const [form, setForm] = useState<FormState>(() => ({
     notionToken: "",
     notionDatabaseId: "",
     topics: [],
     profileDescription: "",
     experienceLevel: "developer_learning_ai",
     digestHour: 7,
-    timezoneOffset: 0,
+    timezoneOffset: detectTimezoneOffset(),
     email: "",
-  });
+  }));
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideSection, setGuideSection] = useState<GuideSection>(null);
   const [connectionStatus, setConnectionStatus] = useState<
@@ -563,9 +558,9 @@ export default function SetupForm() {
                     onChange={(e) => set("timezoneOffset", Number(e.target.value))}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
                   >
-                    {TIMEZONE_OFFSETS.map((o) => (
-                      <option key={o} value={o}>
-                        {fmtOffset(o)}
+                    {TIMEZONES.map((tz) => (
+                      <option key={tz.offset} value={tz.offset}>
+                        {tz.label}
                       </option>
                     ))}
                   </select>
@@ -637,8 +632,8 @@ export default function SetupForm() {
                 <p className="text-sm text-gray-500 mt-2 max-w-sm mx-auto">
                   Your first digest will arrive in Notion at{" "}
                   <strong>{fmtHour(form.digestHour)}</strong>{" "}
-                  ({fmtOffset(form.timezoneOffset)}) tomorrow morning. You can trigger
-                  one now from the dashboard.
+                  <span className="text-gray-400">({fmtRawOffset(form.timezoneOffset)})</span>{" "}
+                  tomorrow morning. You can trigger one now from the dashboard.
                 </p>
               </div>
 

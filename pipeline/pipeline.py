@@ -64,21 +64,23 @@ def _is_user_due(user_config: dict, utc_hour: int) -> bool:
     """Return True when this user's digest is due at *utc_hour*.
 
     A user's delivery time in UTC is:
-        target_utc_hour = (digest_hour - timezone_offset) % 24
+        target_utc_hour = round((digest_hour - timezone_offset) % 24) % 24
+
+    The round() handles half-hour and quarter-hour timezone offsets (e.g.
+    IST UTC+5:30 = 5.5, NPT UTC+5:45 = 5.75) by mapping them to the nearest
+    whole UTC hour, since the pipeline is triggered once per hour.
 
     Examples:
-        digest_hour=8,  timezone_offset=-5  →  target 13:00 UTC
-        digest_hour=7,  timezone_offset=+1  →  target  6:00 UTC
-        digest_hour=22, timezone_offset=+9  →  target 13:00 UTC
-
-    timezone_offset is a whole-hour integer (matching the options exposed
-    in the Settings UI).  digest_hour is 0–23 local time.
+        digest_hour=8,  timezone_offset=-5    →  target 13:00 UTC
+        digest_hour=7,  timezone_offset=+1    →  target  6:00 UTC
+        digest_hour=7,  timezone_offset=+5.5  →  target  2:00 UTC  (IST: 7am − 5.5h = 1.5h → round → 2)
+        digest_hour=22, timezone_offset=+9    →  target 13:00 UTC
     """
     raw_hour   = user_config.get("digest_hour")
     raw_offset = user_config.get("timezone_offset")
     digest_hour = int(raw_hour   if raw_hour   is not None else 7)
-    tz_offset   = int(raw_offset if raw_offset is not None else 0)
-    target_utc_hour = (digest_hour - tz_offset) % 24
+    tz_offset   = float(raw_offset if raw_offset is not None else 0)
+    target_utc_hour = round((digest_hour - tz_offset) % 24) % 24
     return utc_hour == target_utc_hour
 
 

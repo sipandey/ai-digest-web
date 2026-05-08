@@ -3,6 +3,7 @@
 import { useClerk } from "@clerk/nextjs";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { TIMEZONES, fmtRawOffset, detectTimezoneOffset } from "@/lib/timezones";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -46,25 +47,11 @@ const SUGGESTED_TOPICS = [
 ];
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const TIMEZONE_OFFSETS = Array.from({ length: 27 }, (_, i) => i - 12); // -12 … +14
 
 function fmtHour(h: number): string {
   const period = h < 12 ? "AM" : "PM";
   const display = h % 12 === 0 ? 12 : h % 12;
   return `${display}:00 ${period}`;
-}
-
-function fmtOffset(o: number): string {
-  if (o === 0) return "UTC±0";
-  return o > 0 ? `UTC+${o}` : `UTC${o}`;
-}
-
-function computeUtcHour(digestHour: number, timezoneOffset: number): number {
-  return ((digestHour - timezoneOffset) % 24 + 24) % 24;
-}
-
-function padHour(h: number): string {
-  return String(h).padStart(2, "0") + ":00";
 }
 
 const TOTAL_STEPS = 4;
@@ -76,15 +63,15 @@ export default function OnboardingForm() {
   const { signOut } = useClerk();
 
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState<FormData>({
+  const [form, setForm] = useState<FormData>(() => ({
     profileDescription: "",
     experienceLevel: "developer_learning_ai",
     topics: [],
     notionToken: "",
     notionDatabaseId: "",
     digestHour: 7,
-    timezoneOffset: 0,
-  });
+    timezoneOffset: detectTimezoneOffset(),
+  }));
 
   const [topicInput, setTopicInput] = useState("");
   const [topicError, setTopicError] = useState("");
@@ -437,20 +424,22 @@ export default function OnboardingForm() {
                   onChange={(e) => setForm((f) => ({ ...f, timezoneOffset: Number(e.target.value) }))}
                   className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] focus:outline-none transition-colors"
                 >
-                  {TIMEZONE_OFFSETS.map((o) => (
-                    <option key={o} value={o}>{fmtOffset(o)}</option>
+                  {TIMEZONES.map((tz) => (
+                    <option key={tz.offset} value={tz.offset}>{tz.label}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Live UTC delivery hint */}
+              {/* Delivery confirmation hint */}
               <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-indigo-400 shrink-0">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
                 </svg>
                 <p className="text-xs text-indigo-700">
-                  Digest will run at{" "}
-                  <span className="font-semibold">{padHour(computeUtcHour(form.digestHour, form.timezoneOffset))} UTC</span>
+                  Your digest will be delivered at{" "}
+                  <span className="font-semibold">{fmtHour(form.digestHour)}</span>
+                  {" "}
+                  <span className="text-indigo-500">({fmtRawOffset(form.timezoneOffset)})</span>
                   {" "}each day
                 </p>
               </div>

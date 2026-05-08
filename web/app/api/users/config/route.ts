@@ -146,8 +146,8 @@ export async function POST(req: NextRequest) {
     if (typeof digestHour === "number" && (!Number.isInteger(digestHour) || digestHour < 0 || digestHour > 23)) {
       postErrors.push("digest_hour must be an integer between 0 and 23");
     }
-    if (typeof timezoneOffset === "number" && (!Number.isInteger(timezoneOffset) || timezoneOffset < -12 || timezoneOffset > 14)) {
-      postErrors.push("timezone_offset must be an integer between -12 and 14");
+    if (typeof timezoneOffset === "number" && (timezoneOffset < -12 || timezoneOffset > 14)) {
+      postErrors.push("timezone_offset must be between -12 and 14");
     }
     if (postErrors.length > 0) {
       return NextResponse.json({ error: postErrors.join("; ") }, { status: 400 });
@@ -280,8 +280,8 @@ export async function PATCH(req: NextRequest) {
       const v = updates["timezone_offset"];
       if (v !== null && v !== undefined) {
         const n = Number(v);
-        if (!Number.isInteger(n) || n < -12 || n > 14) {
-          validationErrors.push("timezone_offset must be an integer between -12 and 14");
+        if (isNaN(n) || n < -12 || n > 14) {
+          validationErrors.push("timezone_offset must be between -12 and 14");
         } else {
           updates["timezone_offset"] = n; // normalise to number
         }

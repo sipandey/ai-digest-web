@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useClerk } from "@clerk/nextjs";
 import BottomNav from "@/components/BottomNav";
+import { TIMEZONES, fmtRawOffset } from "@/lib/timezones";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -41,28 +42,11 @@ const EXPERIENCE_LEVELS: { value: ExperienceLevel; label: string; sub: string }[
   { value: "ml_engineer", label: "ML Engineer", sub: "Training models, deep ML work" },
 ];
 
-// Full UTC offset range matching the SetupForm so users can always see and
-// change whatever offset they configured during setup.
-const TIMEZONE_OFFSETS = Array.from({ length: 27 }, (_, i) => i - 12); // -12 … +14
-
-function fmtOffset(o: number): string {
-  if (o === 0) return "UTC±0";
-  return o > 0 ? `UTC+${o}` : `UTC${o}`;
-}
-
 function formatHour(h: number): string {
   if (h === 0) return "12:00 AM";
   if (h < 12) return `${h}:00 AM`;
   if (h === 12) return "12:00 PM";
   return `${h - 12}:00 PM`;
-}
-
-function computeUtcHour(digestHour: number, timezoneOffset: number): number {
-  return ((digestHour - timezoneOffset) % 24 + 24) % 24;
-}
-
-function padHour(h: number): string {
-  return String(h).padStart(2, "0") + ":00";
 }
 
 // ── shared primitives ─────────────────────────────────────────────────────────
@@ -449,22 +433,22 @@ export default function SettingsView() {
                 onChange={(e) => setTimezoneOffset(Number(e.target.value))}
                 className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] focus:outline-none transition-colors"
               >
-                {TIMEZONE_OFFSETS.map((o) => (
-                  <option key={o} value={o}>{fmtOffset(o)}</option>
+                {TIMEZONES.map((tz) => (
+                  <option key={tz.offset} value={tz.offset}>{tz.label}</option>
                 ))}
               </select>
             </div>
 
-            {/* Live UTC delivery-time hint */}
+            {/* Delivery confirmation hint */}
             <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-indigo-400 shrink-0">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
               </svg>
               <p className="text-xs text-indigo-700">
-                Digest will be delivered at{" "}
-                <span className="font-semibold">
-                  {padHour(computeUtcHour(digestHour, timezoneOffset))} UTC
-                </span>
+                Your digest will be delivered at{" "}
+                <span className="font-semibold">{formatHour(digestHour)}</span>
+                {" "}
+                <span className="text-indigo-500">({fmtRawOffset(timezoneOffset)})</span>
                 {" "}each day
               </p>
             </div>

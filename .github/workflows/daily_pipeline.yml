@@ -96,12 +96,13 @@ jobs:
             exit 0
           fi
 
-          # Count users whose (digest_hour - timezone_offset) % 24 == UTC_HOUR.
+          # Count users whose (digest_hour - timezone_offset) % 24 ≈ UTC_HOUR.
+          # round() handles half-hour offsets (e.g. IST UTC+5:30 stored as 5.5).
           # The double-mod ((x % 24) + 24) % 24 keeps the result positive even
           # when digest_hour < timezone_offset (e.g. 1am UTC+8 → 17:00 UTC).
           COUNT=$(echo "$RESPONSE" | jq --argjson h "$UTC_HOUR" \
             '[.[] | select(
-               (((.digest_hour // 7) - (.timezone_offset // 0)) % 24 + 24) % 24
+               ((((.digest_hour // 7) - (.timezone_offset // 0)) % 24 + 24) % 24 | round)
                == $h
              )] | length')
 
