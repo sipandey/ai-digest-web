@@ -14,7 +14,11 @@
 # and costs essentially nothing. It queries Supabase for users whose
 # stored digest_hour and timezone_offset map to the current UTC hour:
 #
-#   target_utc_hour = (digest_hour - timezone_offset) % 24
+#   target_utc_hour = (round_half_away(digest_hour − timezone_offset) % 24 + 24) % 24
+#
+# round_half_away rounds 0.5 away from zero so half-hour timezone offsets
+# (e.g. IST UTC+5:30 stored as 5.5) map to a deterministic UTC hour that
+# is consistent between the jq gate and Python's _is_user_due().
 #
 # If no users are due the workflow exits immediately — the heavy 'pipeline'
 # job never starts. If users are due, the 'pipeline' job starts and only
@@ -96,13 +100,18 @@ jobs:
             exit 0
           fi
 
-          # Count users whose (digest_hour - timezone_offset) % 24 ≈ UTC_HOUR.
-          # round() handles half-hour offsets (e.g. IST UTC+5:30 stored as 5.5).
+          # Count users whose (digest_hour - timezone_offset) rounds to UTC_HOUR.
+          #
+          # Round BEFORE the modulo — jq's % truncates floats to integers before
+          # performing the division, so 1.5 % 24 = 1, not 1.5. Rounding first
+          # (1.5 | round = 2, then 2 % 24 = 2) matches Python's behaviour.
+          # jq uses "round half away from zero" (2.5→3); Python is updated to match.
+          #
           # The double-mod ((x % 24) + 24) % 24 keeps the result positive even
           # when digest_hour < timezone_offset (e.g. 1am UTC+8 → 17:00 UTC).
           COUNT=$(echo "$RESPONSE" | jq --argjson h "$UTC_HOUR" \
             '[.[] | select(
-               ((((.digest_hour // 7) - (.timezone_offset // 0)) % 24 + 24) % 24 | round)
+               (((( (.digest_hour // 7) - (.timezone_offset // 0) ) | round) % 24 + 24) % 24)
                == $h
              )] | length')
 

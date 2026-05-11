@@ -1,5 +1,6 @@
 """Main orchestrator. Usage: python pipeline/pipeline.py"""
 import logging
+import math
 import os
 import sys
 from datetime import date, datetime, timezone
@@ -60,27 +61,48 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _round_half_away(x: float) -> int:
+    """Round to the nearest integer, with 0.5 rounding away from zero.
+
+    This matches jq's built-in round() function. Python's built-in round() uses
+    banker's rounding (round-half-to-even), which differs at .5 boundaries
+    (e.g. round(2.5) → 2 in Python but → 3 in jq). Using the same rule in both
+    places ensures the gate job (jq) and the Python pipeline agree on which UTC
+    hour each user is due.
+    """
+    if x >= 0:
+        return math.floor(x + 0.5)
+    return math.ceil(x - 0.5)
+
+
 def _is_user_due(user_config: dict, utc_hour: int) -> bool:
     """Return True when this user's digest is due at *utc_hour*.
 
-    A user's delivery time in UTC is:
-        target_utc_hour = round((digest_hour - timezone_offset) % 24) % 24
+    A user's delivery time in UTC is computed by rounding the raw float
+    difference to the nearest whole hour (half-hour offsets like IST UTC+5:30
+    stored as 5.5 need this), then applying a double-mod to keep the result
+    in [0, 23]:
 
-    The round() handles half-hour and quarter-hour timezone offsets (e.g.
-    IST UTC+5:30 = 5.5, NPT UTC+5:45 = 5.75) by mapping them to the nearest
-    whole UTC hour, since the pipeline is triggered once per hour.
+        raw       = digest_hour − timezone_offset
+        target    = (_round_half_away(raw) % 24 + 24) % 24
+
+    The round is applied to the *difference* before the modulo — jq's %
+    operator truncates floats to integers before dividing, so the same
+    order must be used here to guarantee they agree.
 
     Examples:
         digest_hour=8,  timezone_offset=-5    →  target 13:00 UTC
         digest_hour=7,  timezone_offset=+1    →  target  6:00 UTC
-        digest_hour=7,  timezone_offset=+5.5  →  target  2:00 UTC  (IST: 7am − 5.5h = 1.5h → round → 2)
+        digest_hour=7,  timezone_offset=+5.5  →  target  2:00 UTC  (IST: 1.5h → 2)
+        digest_hour=8,  timezone_offset=+5.5  →  target  3:00 UTC  (IST: 2.5h → 3, half-away)
         digest_hour=22, timezone_offset=+9    →  target 13:00 UTC
     """
     raw_hour   = user_config.get("digest_hour")
     raw_offset = user_config.get("timezone_offset")
     digest_hour = int(raw_hour   if raw_hour   is not None else 7)
     tz_offset   = float(raw_offset if raw_offset is not None else 0)
-    target_utc_hour = round((digest_hour - tz_offset) % 24) % 24
+    raw_diff    = digest_hour - tz_offset
+    target_utc_hour = (_round_half_away(raw_diff) % 24 + 24) % 24
     return utc_hour == target_utc_hour
 
 
