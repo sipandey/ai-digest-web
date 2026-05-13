@@ -5,11 +5,18 @@
  * Next.js Edge runtime with no additional dependencies.
  *
  * Token format:  base64url(payload) + "." + base64url(signature)
- * Payload:       { sub: userId, exp: unixTimestamp }
+ * Payload:       { sub: userId, exp: unixTimestamp, jti: uuid }
+ *
+ * The `jti` (JWT ID) is a UUID embedded in the payload that acts as a
+ * server-side revocation key. On every verify call, auth.ts checks the
+ * guest_sessions table for a matching non-revoked row. On logout, the row
+ * is soft-deleted (revoked_at = now()) instead of only clearing the cookie.
+ * Tokens minted before this change (no `jti` claim) are still accepted until
+ * they expire — the DB check is skipped when `jti` is absent.
  */
 
 export const COOKIE_NAME = "__digest_sid";
-export const EXPIRY_SECONDS = 90 * 24 * 60 * 60; // 90 days
+export const EXPIRY_SECONDS = 30 * 24 * 60 * 60; // 30 days (was 90)
 
 // ── internal helpers ──────────────────────────────────────────────────────────
 
@@ -46,20 +53,35 @@ function b64urlDecode(s: string): Uint8Array<ArrayBuffer> {
 
 // ── public API ────────────────────────────────────────────────────────────────
 
-/** Create a signed session token for the given internal user UUID. */
-export async function createSessionToken(userId: string): Promise<string> {
+/**
+ * Create a signed session token for the given internal user UUID.
+ * Returns the opaque token string AND the `jti` UUID so callers can
+ * persist the session record in `guest_sessions`.
+ */
+export async function createSessionToken(
+  userId: string,
+): Promise<{ token: string; jti: string }> {
+  const jti = crypto.randomUUID();
   const payload = b64urlEncode(
-    JSON.stringify({ sub: userId, exp: Math.floor(Date.now() / 1000) + EXPIRY_SECONDS }),
+    JSON.stringify({
+      sub: userId,
+      exp: Math.floor(Date.now() / 1000) + EXPIRY_SECONDS,
+      jti,
+    }),
   );
   const key = await importKey();
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-  return `${payload}.${b64urlEncode(sig)}`;
+  return { token: `${payload}.${b64urlEncode(sig)}`, jti };
 }
 
-/** Verify a session token. Returns `{ sub: userId }` or `null` if invalid/expired. */
+/**
+ * Verify a session token.
+ * Returns `{ sub: userId, jti: string | null }` or `null` if invalid/expired.
+ * `jti` is null for legacy tokens minted before the revocation feature.
+ */
 export async function verifySessionToken(
   token: string,
-): Promise<{ sub: string } | null> {
+): Promise<{ sub: string; jti: string | null } | null> {
   try {
     const dot = token.lastIndexOf(".");
     if (dot < 1) return null;
@@ -80,7 +102,8 @@ export async function verifySessionToken(
     if (typeof parsed.sub !== "string") return null;
     if (parsed.exp < Math.floor(Date.now() / 1000)) return null;
 
-    return { sub: parsed.sub };
+    const jti = typeof parsed.jti === "string" ? parsed.jti : null;
+    return { sub: parsed.sub, jti };
   } catch {
     return null;
   }

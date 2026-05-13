@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { createSessionToken, buildSetCookieHeader } from "@/lib/session";
+import { persistGuestSession } from "@/lib/guest-sessions";
 import { rateLimit } from "@/lib/ratelimit";
 
 const NOTION_VERSION = "2022-06-28";
@@ -80,7 +81,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Issue fresh cookie ─────────────────────────────────────────────────────
-  const token = await createSessionToken(user.id);
+  const { token, jti } = await createSessionToken(user.id);
+  // Persist session record for server-side revocation support.
+  await persistGuestSession(jti, user.id);
   const response = NextResponse.json({ success: true });
   response.headers.set("Set-Cookie", buildSetCookieHeader(token));
   return response;

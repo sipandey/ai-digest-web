@@ -153,10 +153,10 @@ Added a system-wide daily budget check as the first gate inside the trigger hand
 
 ## 🟢 Low — Security
 
-### L-1. No server-side session revocation for guest tokens
-**File:** `web/lib/session.ts`  
-`__digest_sid` tokens are HMAC-signed with a 90-day expiry and validated client-side only. If stolen, the only revocation path is rotating `GUEST_SESSION_SECRET`, which logs out all guest users simultaneously. There is no per-user "log out everywhere".  
-**Options:** (a) Reduce expiry to 30 days, (b) store a sessions table in Supabase and check it on every verify call, (c) accept for now given the low data sensitivity.
+### ~~L-1. No server-side session revocation for guest tokens~~ ✅ Fixed
+**Files:** `supabase/migrations/20250513_guest_sessions.sql` (new), `web/lib/guest-sessions.ts` (new), `web/lib/session.ts`, `web/lib/auth.ts`, `web/app/api/auth/logout/route.ts`, `web/app/api/guest/setup/route.ts`, `web/app/api/guest/verify/route.ts`  
+Added a `guest_sessions` table (jti UUID PK, user_id FK, expires_at, revoked_at). Every new session mints a `jti` (UUID) embedded in the HMAC payload. `createSessionToken` now returns `{ token, jti }`; the jti is persisted to `guest_sessions` via `persistGuestSession`. On every cookie verify, `auth.ts` calls `isGuestSessionValid(jti)` — tokens with a revoked or expired row are rejected. Logout calls `revokeGuestSession(jti)` (sets `revoked_at`) before clearing the cookie. Legacy tokens without a `jti` claim bypass the DB check for backward compatibility. Token expiry reduced from 90 → 30 days as an additional control.  
+**Required action:** Run migration `20250513_guest_sessions.sql` in Supabase SQL Editor.
 
 ---
 

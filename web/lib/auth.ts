@@ -11,6 +11,7 @@ import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "./supabase";
 import { verifySessionToken, COOKIE_NAME } from "./session";
+import { isGuestSessionValid } from "./guest-sessions";
 
 /**
  * Returns the internal users.id UUID for the currently authenticated user,
@@ -58,7 +59,13 @@ export async function getAuthUserId(): Promise<string | null> {
     const token = jar.get(COOKIE_NAME)?.value;
     if (token) {
       const payload = await verifySessionToken(token);
-      if (payload?.sub) return payload.sub;
+      if (payload?.sub) {
+        // Server-side revocation check.  Tokens without a jti (minted before
+        // the guest_sessions migration) pass through — isGuestSessionValid
+        // returns true for null jti so legacy sessions keep working.
+        const valid = await isGuestSessionValid(payload.jti);
+        if (valid) return payload.sub;
+      }
     }
   } catch {
     // cookies() throws outside of request context in some Next.js versions
