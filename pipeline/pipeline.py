@@ -75,8 +75,8 @@ def _round_half_away(x: float) -> int:
     return math.ceil(x - 0.5)
 
 
-def _is_user_due(user_config: dict, utc_hour: int) -> bool:
-    """Return True when this user's digest is due at *utc_hour*.
+def _target_utc_hour(user_config: dict) -> int:
+    """Compute the UTC hour at which this user's digest should be delivered.
 
     A user's delivery time in UTC is computed by rounding the raw float
     difference to the nearest whole hour (half-hour offsets like IST UTC+5:30
@@ -102,8 +102,45 @@ def _is_user_due(user_config: dict, utc_hour: int) -> bool:
     digest_hour = int(raw_hour   if raw_hour   is not None else 7)
     tz_offset   = float(raw_offset if raw_offset is not None else 0)
     raw_diff    = digest_hour - tz_offset
-    target_utc_hour = (_round_half_away(raw_diff) % 24 + 24) % 24
-    return utc_hour == target_utc_hour
+    return (_round_half_away(raw_diff) % 24 + 24) % 24
+
+
+def _is_user_due(user_config: dict, utc_hour: int) -> bool:
+    """Return True when this user's digest is due at *utc_hour* or the
+    previous hour.
+
+    The two-hour window (current hour + previous hour) absorbs GitHub Actions
+    cron delays, which routinely run 30–60+ minutes late.  Double-delivery is
+    prevented separately by _already_delivered_today(), which checks whether
+    the user already has a successful pipeline_runs row for today before any
+    work starts.
+    """
+    target = _target_utc_hour(user_config)
+    prev_hour = (utc_hour - 1) % 24
+    return target == utc_hour or target == prev_hour
+
+
+def _already_delivered_today(user_id: str, run_date: str) -> bool:
+    """Return True if the user already has a successful digest for *run_date*.
+
+    Treats both 'complete' and 'empty' as terminal success states — 'empty'
+    means the pipeline ran but no papers passed the threshold, which is still
+    a valid delivery attempt that should not be repeated.
+
+    This guard prevents a second delivery when a user is caught by the
+    two-hour catch-up window (i.e. their cron run fired late and now the
+    next hour's run picks them up again).
+    """
+    result = (
+        supabase.table("pipeline_runs")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("run_date", run_date)
+        .in_("status", ["complete", "empty"])
+        .limit(1)
+        .execute()
+    )
+    return len(result.data) > 0
 
 
 def _load_seen_paper_ids(user_id: str) -> set:
@@ -305,6 +342,17 @@ def main() -> None:
         run_id: str = ""  # populated inside try; kept in scope for the except handler
 
         try:
+            # Guard: skip if already successfully delivered today.
+            # This prevents double-delivery when the two-hour catch-up window
+            # picks up a user whose scheduled cron run fired late.
+            if _already_delivered_today(user_id, run_date):
+                log.info(
+                    "User already delivered today — skipping",
+                    extra={"run_date": run_date, "user_id": user_id, "email": email},
+                )
+                succeeded += 1
+                continue
+
             # Mark run as started — must be inside try/except so a DB or network
             # error here doesn't crash the outer loop and skip all remaining users.
             run_id = _upsert_run(
