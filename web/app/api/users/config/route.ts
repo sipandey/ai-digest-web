@@ -296,11 +296,67 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: validationErrors.join("; ") }, { status: 400 });
     }
 
+    // ── Notion credential validation (before encryption) ─────────────────────
+    // Validate whenever either credential field is being updated, using the
+    // plaintext values from the request. If only one field is changing, fetch
+    // and decrypt the other from the DB so validateNotionCredentials() can
+    // test both together against the Notion API.
+    const updatingToken =
+      typeof updates["notion_token"] === "string" && !!updates["notion_token"];
+    const updatingDbId =
+      typeof updates["notion_database_id"] === "string" && !!updates["notion_database_id"];
+
+    if (updatingToken || updatingDbId) {
+      let plainToken: string;
+      let plainDbId: string;
+
+      if (updatingToken) {
+        plainToken = updates["notion_token"] as string;
+      } else {
+        // Token not changing — fetch the current encrypted value and decrypt it.
+        const { data: cur } = await supabaseAdmin
+          .from("user_configs")
+          .select("notion_token")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (!cur?.notion_token) {
+          return NextResponse.json(
+            { error: "No Notion token on file — provide both token and database ID." },
+            { status: 400 },
+          );
+        }
+        plainToken = await decrypt(cur.notion_token as string);
+      }
+
+      if (updatingDbId) {
+        plainDbId = updates["notion_database_id"] as string;
+      } else {
+        // Database ID not changing — fetch the current encrypted value and decrypt it.
+        const { data: cur } = await supabaseAdmin
+          .from("user_configs")
+          .select("notion_database_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (!cur?.notion_database_id) {
+          return NextResponse.json(
+            { error: "No Notion database ID on file — provide both token and database ID." },
+            { status: 400 },
+          );
+        }
+        plainDbId = await decrypt(cur.notion_database_id as string);
+      }
+
+      const credCheck = await validateNotionCredentials(plainToken, plainDbId);
+      if (!credCheck.ok) {
+        return NextResponse.json({ error: credCheck.error }, { status: 400 });
+      }
+    }
+
     // Encrypt credential fields when they are being updated.
-    if (typeof updates["notion_token"] === "string" && updates["notion_token"]) {
+    if (updatingToken) {
       updates["notion_token"] = await encrypt(updates["notion_token"] as string);
     }
-    if (typeof updates["notion_database_id"] === "string" && updates["notion_database_id"]) {
+    if (updatingDbId) {
       updates["notion_database_id"] = await encrypt(updates["notion_database_id"] as string);
     }
 

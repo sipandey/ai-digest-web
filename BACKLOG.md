@@ -109,10 +109,9 @@ Topics of interest: <user_topics>{topics_str}</user_topics>
 
 ---
 
-### M-4. No Notion credential validation on PATCH
+### ~~M-4. No Notion credential validation on PATCH~~ ✅ Fixed
 **File:** `web/app/api/users/config/route.ts` — PATCH handler  
-The POST (onboarding) calls `validateNotionCredentials()` before saving. The PATCH (Settings reconnect) does not — it saves the token directly. A direct API call bypasses the client-side test-notion check and can store a non-working token, causing silent pipeline failures.  
-**Fix:** Add the same `validateNotionCredentials()` call in the PATCH handler when `notion_token` or `notion_database_id` is present in the update payload.
+PATCH now calls `validateNotionCredentials()` before encrypting or persisting any credential change. If only one of `notion_token` / `notion_database_id` is in the update payload, the other is fetched from the DB and decrypted so both can be validated together against the Notion API. Invalid credentials return a `400` with the Notion error message before any write occurs.
 
 ---
 
