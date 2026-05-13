@@ -115,10 +115,10 @@ PATCH now calls `validateNotionCredentials()` before encrypting or persisting an
 
 ---
 
-### M-5. Clerk `user.updated` event not handled — email changes not synced
+### ~~M-5. Clerk `user.updated` event not handled — email changes not synced~~ ✅ Fixed
 **File:** `web/app/api/auth/webhook/route.ts`  
-`user.created` and `user.deleted` are handled. `user.updated` is not. If a user changes their email in Clerk, `users.email` in Supabase is never updated, breaking the email display in Settings and the Notion-first account-linking logic.  
-**Fix:** Add a `user.updated` handler that updates `email` and `name` for the matching `clerk_id` row.
+Added a `user.updated` handler between the `user.deleted` and `user.created` blocks. On every Clerk profile update it syncs `email` (primary address) and `name` (first + last joined) to the matching `clerk_id` row in Supabase. Name is always included in the update payload so clearing a name propagates correctly (`null`). Returns `500` on DB error so Clerk retries delivery.  
+**Required action:** In the Clerk dashboard, add `user.updated` to the webhook's subscribed events.
 
 ---
 

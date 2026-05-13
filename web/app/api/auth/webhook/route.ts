@@ -72,6 +72,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true });
   }
 
+  // ── user.updated — sync email and name changes from Clerk to Supabase ────────
+  // Clerk is the source of truth for identity. If a user updates their email
+  // or name in Clerk, we must reflect that here so:
+  //   • Settings UI shows the correct email
+  //   • Notion-first account-linking (keyed on email) keeps working
+  //   • Pipeline logs / error reporting reference the current email
+  if (event.type === "user.updated") {
+    const clerkId = event.data.id;
+    const { email_addresses = [], first_name, last_name } = event.data;
+
+    const primaryEmail =
+      email_addresses.find((e) => e.primary)?.email_address ??
+      email_addresses[0]?.email_address;
+    const name = [first_name, last_name].filter(Boolean).join(" ") || null;
+
+    const updatePayload: Record<string, string | null> = {};
+    if (primaryEmail) updatePayload.email = primaryEmail;
+    if (name !== undefined) updatePayload.name = name;
+
+    if (Object.keys(updatePayload).length > 0) {
+      const { error } = await supabaseAdmin
+        .from("users")
+        .update(updatePayload)
+        .eq("clerk_id", clerkId);
+      if (error) {
+        console.error("user.updated — failed to sync user row:", error);
+        // Return 500 so Clerk retries the webhook delivery
+        return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
+      }
+    }
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type !== "user.created") {
     return NextResponse.json({ received: true });
   }
