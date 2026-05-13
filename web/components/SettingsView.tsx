@@ -159,7 +159,9 @@ export default function SettingsView() {
         setExperienceLevel(cfg.experience_level ?? "developer_learning_ai");
         setTopics(cfg.topics ?? []);
         setDigestHour(cfg.digest_hour ?? 7);
-        setTimezoneOffset(cfg.timezone_offset ?? 0);
+        // Number() coercion guards against Supabase returning NUMERIC columns
+        // as JSON strings (e.g. "5.50" instead of 5.5) during any migration window.
+        setTimezoneOffset(Number(cfg.timezone_offset ?? 0));
       } finally {
         setLoading(false);
       }

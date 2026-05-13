@@ -245,7 +245,8 @@ export default function DashboardView() {
   const today = todayISO();
   const todayRun = runs.find((r) => r.run_date === today) ?? null;
   const userName = profile?.name?.split(" ")[0] ?? null;
-  const tz = config?.timezone_offset ?? 0;
+  // Number() coercion: Supabase may return NUMERIC columns as JSON strings.
+  const tz = Number(config?.timezone_offset ?? 0);
 
   // ── render ─────────────────────────────────────────────────────────────────
 

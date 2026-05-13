@@ -109,9 +109,13 @@ jobs:
           #
           # The double-mod ((x % 24) + 24) % 24 keeps the result positive even
           # when digest_hour < timezone_offset (e.g. 1am UTC+8 → 17:00 UTC).
+          # tonumber coercion: Supabase returns NUMERIC columns as JSON strings
+          # (e.g. "5.50" not 5.5). tonumber handles both strings and numbers so
+          # the formula keeps working even during a migration window where some
+          # rows still have the old NUMERIC type.
           COUNT=$(echo "$RESPONSE" | jq --argjson h "$UTC_HOUR" \
             '[.[] | select(
-               (((( (.digest_hour // 7) - (.timezone_offset // 0) ) | round) % 24 + 24) % 24)
+               (((( ((.digest_hour // 7) | tonumber) - ((.timezone_offset // "0") | tonumber) ) | round) % 24 + 24) % 24)
                == $h
              )] | length')
 
