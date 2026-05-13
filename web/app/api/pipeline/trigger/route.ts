@@ -9,8 +9,26 @@ type TriggerMode = "direct" | "github_actions";
 // this route entirely via GitHub Actions cron).
 const MAX_DAILY_TRIGGERS = 3;
 
+// System-wide cap on total successful pipeline runs per day across all users.
+// Protects against runaway OpenAI spend from viral growth or multi-account abuse.
+// Only counts non-failed runs (pending/running/complete/empty) — failed runs may
+// not have consumed any OpenAI tokens and shouldn't block legitimate users.
+// Override via SYSTEM_DAILY_RUN_BUDGET env var without a code deploy.
+const SYSTEM_DAILY_RUN_BUDGET = parseInt(
+  process.env.SYSTEM_DAILY_RUN_BUDGET ?? "200",
+  10,
+);
+
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function secondsUntilMidnightUTC(): number {
+  const now = new Date();
+  const midnight = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+  );
+  return Math.ceil((midnight.getTime() - now.getTime()) / 1000);
 }
 
 function getTriggerMode(): TriggerMode {
@@ -129,6 +147,36 @@ export async function POST() {
   }
 
   try {
+    const today = todayISO();
+
+    // ── System-wide daily budget check ───────────────────────────────────────
+    // Count all non-failed runs today. A fast HEAD+count query — no rows returned.
+    // Failed runs are excluded: they may not have consumed OpenAI resources and
+    // shouldn't penalise legitimate users. If the budget check itself fails
+    // (transient DB error) we log and continue — the next query will surface it.
+    const { count: systemRunCount, error: budgetError } = await supabaseAdmin
+      .from("pipeline_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("run_date", today)
+      .in("status", ["pending", "running", "complete", "empty"]);
+
+    if (budgetError) {
+      console.error("System budget check error:", budgetError);
+      // Fail open — let the per-user checks proceed; DB errors surface there too.
+    } else if ((systemRunCount ?? 0) >= SYSTEM_DAILY_RUN_BUDGET) {
+      console.warn(
+        `System daily run budget reached: ${systemRunCount}/${SYSTEM_DAILY_RUN_BUDGET} on ${today}`,
+      );
+      return NextResponse.json(
+        {
+          error:
+            "The service has reached its daily capacity. Your scheduled digest will still run tomorrow morning.",
+          retryAfterSeconds: secondsUntilMidnightUTC(),
+        },
+        { status: 503 },
+      );
+    }
+
     // Resolve user + config in one query
     const { data: user, error: userError } = await supabaseAdmin
       .from("users")
@@ -150,7 +198,6 @@ export async function POST() {
       );
     }
 
-    const today = todayISO();
     const triggerMode = getTriggerMode();
 
     // Fetch today's run row — includes trigger_count for the daily cap check.

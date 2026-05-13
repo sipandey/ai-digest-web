@@ -141,13 +141,13 @@ Guest users require no email. One person can create unlimited accounts using dif
 
 ---
 
-### M-8. System-wide daily pipeline run budget / circuit breaker
+### ~~M-8. System-wide daily pipeline run budget / circuit breaker~~ ✅ Fixed
 **File:** `web/app/api/pipeline/trigger/route.ts`  
-No cap on total pipeline runs across all users. Viral growth or a multi-account abuser could trigger large OpenAI bills before you notice.  
-**Fix:** Count `pipeline_runs WHERE run_date = today` on each trigger. If total ≥ budget (e.g. 200), return 503. Alternatively, set a hard spend limit in the OpenAI dashboard (Settings → Limits).  
-**Quick mitigation (do immediately):** Set a monthly budget cap in **OpenAI dashboard → Settings → Limits**. Takes 30 seconds and caps worst-case financial exposure to a fixed number while the code fix is built.
+Added a system-wide daily budget check as the first gate inside the trigger handler (after auth, before all per-user checks). On every trigger request, a fast `COUNT` HEAD query counts non-failed runs (`pending/running/complete/empty`) for today across all users. If the count ≥ `SYSTEM_DAILY_RUN_BUDGET` (default 200, overridable via env var without a deploy), the route returns `503` with a `retryAfterSeconds` field pointing to UTC midnight. Failed runs are excluded — they may not have consumed OpenAI resources and shouldn't penalise legitimate users. Budget check errors fail open (logged but not blocking) since per-user DB queries will surface the error immediately after.
 
-**Note — GitHub Actions minutes:** Each pipeline run consumes ~2–5 minutes of GitHub Actions time. The free tier is 2,000 min/month on private repos. At scale (100 users × 3 manual triggers + hourly scheduled runs) you can exceed this. GitHub charges ~$0.008/min beyond the free tier — not large, but non-zero. Monitor via **GitHub → Repository → Settings → Billing**.
+**Still recommended:** Set a monthly spend cap in the OpenAI dashboard (Settings → Limits) as a second independent safety net.
+
+**Note — GitHub Actions minutes:** Each pipeline run consumes ~2–5 minutes of GitHub Actions time. The free tier is 2,000 min/month on private repos. Monitor via **GitHub → Repository → Settings → Billing**.
 
 ---
 
