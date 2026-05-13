@@ -159,22 +159,28 @@ def _record_delivered_papers(
 
 
 def _upsert_run(user_id: str, run_date: str, **fields) -> str:
-    """Create or update a pipeline_runs row; always return the run id."""
-    existing = (
+    """Atomically create or update a pipeline_runs row; return the run id.
+
+    Uses a true INSERT … ON CONFLICT DO UPDATE so concurrent callers — e.g.
+    the web trigger route and the scheduled pipeline both touching the same
+    user at the same second — never race on the unique (user_id, run_date)
+    constraint and never raise an unhandled exception that would crash the
+    per-user loop and skip all subsequent users.
+
+    Only the columns explicitly passed in `fields` are updated on conflict;
+    columns not in the payload (trigger_count, notion_page_url, …) are left
+    unchanged — PostgREST's merge-duplicates resolution only SET's the
+    columns present in the request body.
+    """
+    result = (
         supabase.table("pipeline_runs")
+        .upsert(
+            {"user_id": user_id, "run_date": run_date, **fields},
+            on_conflict="user_id,run_date",
+        )
         .select("id")
-        .eq("user_id", user_id)
-        .eq("run_date", run_date)
         .execute()
     )
-    if existing.data:
-        run_id: str = existing.data[0]["id"]
-        supabase.table("pipeline_runs").update(fields).eq("id", run_id).execute()
-        return run_id
-
-    result = supabase.table("pipeline_runs").insert(
-        {"user_id": user_id, "run_date": run_date, **fields}
-    ).execute()
     return result.data[0]["id"]
 
 
@@ -283,21 +289,23 @@ def main() -> None:
     for user_config in users:
         user_id: str = user_config["user_id"]
         email: str = user_config.get("users", {}).get("email", user_id)
-
-        # Mark run as started
-        run_id = _upsert_run(
-            user_id,
-            run_date,
-            status="running",
-            started_at=_now(),
-            papers_fetched=len(papers),
-        )
-        log.info(
-            "User run started",
-            extra={"run_date": run_date, "run_id": run_id, "user_id": user_id, "email": email},
-        )
+        run_id: str = ""  # populated inside try; kept in scope for the except handler
 
         try:
+            # Mark run as started — must be inside try/except so a DB or network
+            # error here doesn't crash the outer loop and skip all remaining users.
+            run_id = _upsert_run(
+                user_id,
+                run_date,
+                status="running",
+                started_at=_now(),
+                papers_fetched=len(papers),
+            )
+            log.info(
+                "User run started",
+                extra={"run_date": run_date, "run_id": run_id, "user_id": user_id, "email": email},
+            )
+
             # Filter out papers already delivered to this user on previous days
             seen_ids = _load_seen_paper_ids(user_id)
             fresh_papers = [p for p in papers if p.get("arxiv_id", "") not in seen_ids]
@@ -382,13 +390,17 @@ def main() -> None:
                 extra={"run_date": run_date, "run_id": run_id, "user_id": user_id, "error": str(exc)},
                 exc_info=True,
             )
-            supabase.table("pipeline_runs").update(
-                {
-                    "status": "failed",
-                    "error_message": str(exc)[:500],
-                    "completed_at": _now(),
-                }
-            ).eq("id", run_id).execute()
+            # Only update pipeline_runs if we successfully obtained a run_id
+            # (i.e. _upsert_run didn't throw). If it did throw, run_id is ""
+            # and there's nothing to update — the row may not exist.
+            if run_id:
+                supabase.table("pipeline_runs").update(
+                    {
+                        "status": "failed",
+                        "error_message": str(exc)[:500],
+                        "completed_at": _now(),
+                    }
+                ).eq("id", run_id).execute()
             failed += 1
             # Continue — one user's failure must not stop others
 
