@@ -131,13 +131,12 @@ The check step now uses `SUPABASE_ANON_KEY` instead of `SUPABASE_SERVICE_ROLE_KE
 
 ---
 
-### M-7. Email verification before first pipeline run
+### M-7. Email verification / invite gate before first pipeline run
 **Files:** `web/app/api/guest/setup/route.ts`, `web/app/api/pipeline/trigger/route.ts`  
-Guest users require no email. One person can create unlimited accounts using different Notion integration tokens (each produces a unique `notion_bot_id`). With a 3-runs/day cap, 10 accounts = 30 pipeline runs/day ≈ $30 OpenAI spend.  
-**Fix options (pick one):**
-- Require a verified email before the first pipeline run is allowed. Block `/api/pipeline/trigger` until `users.email_verified = true`. Send verification link via Resend/Postmark.
-- Or: require an invite code during guest setup (simpler for closed beta).  
-**Schema change needed:** `ALTER TABLE users ADD COLUMN email_verified boolean NOT NULL DEFAULT false;`
+Guest users require no email. One person can create unlimited accounts using different Notion integration tokens (each produces a unique `notion_bot_id`). With a 3-runs/day cap, 10 accounts = 30 pipeline runs/day ≈ $30 OpenAI spend. M-8's 200-run system circuit breaker is a last resort, not a per-person control — 50+ malicious accounts can exhaust capacity for legitimate users before the budget trips.  
+**Fix options (pick one, in order of complexity):**
+- **Invite code (simplest — no schema change):** Check a single `INVITE_CODE` env var against a field in the `/api/guest/setup` request body. One env var, zero schema changes. Right for closed beta.
+- **Verified email gate (stronger):** Require a verified email before the first pipeline run. Block `/api/pipeline/trigger` until `users.email_verified = true`. Send verification link via Resend/Postmark. Schema change: `ALTER TABLE users ADD COLUMN email_verified boolean NOT NULL DEFAULT false;`
 
 ---
 
@@ -216,6 +215,119 @@ Migrations are SQL files committed to the repo but must be run manually in the S
 ### ~~I-3. Notion token stored in plaintext in user_configs~~ ✅ Fixed
 **Column:** `user_configs.notion_token` (and `notion_database_id`)
 Both credential fields are now encrypted at the application layer (AES-256-GCM) before every DB write, and decrypted on read. See Legal-1 for implementation details.
+
+---
+
+## 🟡 Operational — Required before first real users
+
+### O-1. Run pending Supabase migrations
+**Migrations not yet confirmed applied:**
+- `supabase/migrations/20250513_guest_sessions.sql` — creates the `guest_sessions` table. Without it, every call to `persistGuestSession` / `isGuestSessionValid` throws a PostgREST 404 at login, killing guest auth entirely.
+- `supabase/migrations/20250513_anon_scheduling_read.sql` — grants `anon` role column-level SELECT on `user_configs`. Without it, the GitHub Actions `check` job exits with `permission denied` and the pipeline never runs on schedule.
+
+**Required actions:**
+1. Run `20250513_guest_sessions.sql` in Supabase SQL Editor
+2. Run `20250513_anon_scheduling_read.sql` in Supabase SQL Editor
+
+---
+
+### O-2. Add missing environment variables to Vercel and GitHub Actions
+Several variables used in production code are not yet confirmed as set. Missing any of these causes immediate runtime failures:
+
+| Variable | Where needed | Effect if absent |
+|---|---|---|
+| `NOTION_TOKEN_ENCRYPTION_KEY` | Vercel + GitHub Actions | `encrypt()` throws — guest setup and settings PATCH break |
+| `GUEST_SESSION_SECRET` | Vercel | `importKey()` throws — no guest session can be issued |
+| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Vercel | Falls back to per-instance in-memory rate limiter — not effective across Vercel invocations |
+| `CLERK_WEBHOOK_SECRET` | Vercel | Every webhook call returns 500 — user creation/deletion/update never lands in Supabase |
+| `PIPELINE_GITHUB_TOKEN` + `PIPELINE_GITHUB_REPOSITORY` | Vercel | "Run Now" always errors in `github_actions` mode |
+| `SUPABASE_ANON_KEY` | GitHub Actions secret | `check` job curl fails — pipeline never triggers on schedule |
+
+Also add `user.updated` to Clerk webhook subscribed events (for email/name sync — M-5 code is in place but the Clerk dashboard subscription is manual).
+
+---
+
+### O-3. Run encrypt-existing-tokens.mjs backfill
+`web/scripts/encrypt-existing-tokens.mjs` must be run exactly once after deploying Legal-1 / I-3 encryption changes. Any users created before that deploy have plaintext Notion tokens in `user_configs`. The `decrypt()` function handles them gracefully during reads, but calling `encrypt()` on the next PATCH would double-encrypt an already-plaintext value. Run the script before onboarding the first real user.
+
+---
+
+## 🔵 Engineering Hygiene
+
+### E-1. CI does not run the web test suite
+**Files:** `.github/workflows/ci.yml`  
+`ci.yml` only triggers on `pipeline/**` changes and only runs pytest. The 93-test vitest suite (`session.ts`, `guest-sessions.ts`, `proxy.ts`, `logout route`) never runs in CI. A regression in session signing, middleware auth, or guest revocation logic would merge silently.  
+**Fix:** Add a `web-tests` job to `ci.yml` triggered on `web/**` changes:
+```yaml
+web-tests:
+  runs-on: ubuntu-latest
+  defaults:
+    run:
+      working-directory: web
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+    - run: npm ci --ignore-scripts
+    - run: npm test
+```
+
+---
+
+### E-2. `.env.example` is incomplete and has a phantom variable
+**File:** `.env.example`  
+Variables used in production code but missing from `.env.example`:
+- `NEXT_PUBLIC_APP_URL` — if absent, `metadataBase` uses hardcoded `https://aidigest.app`; staging/preview deployments generate wrong OG metadata
+- `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — critical for distributed rate limiting in prod
+- `SUPABASE_URL` — non-`NEXT_PUBLIC` version used by all server-side routes; `NEXT_PUBLIC_SUPABASE_URL` is not a substitute in Node.js server context
+- `SYSTEM_DAILY_RUN_BUDGET` — optional override, but should be documented
+
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` is in `.env.example` but is **never referenced** in any web `.ts`/`.tsx` file (the web app uses only `supabaseAdmin` via the service role key). Remove it or add a comment explaining it is only needed as a GitHub Actions secret.
+
+---
+
+### E-3. Missing HSTS (`Strict-Transport-Security`) header
+**File:** `web/next.config.ts`  
+The security header set has `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and `Permissions-Policy`, but no `Strict-Transport-Security`. Vercel redirects HTTP→HTTPS at the CDN edge, but HSTS tells browsers never to attempt plain HTTP in the first place, preventing SSL-stripping attacks on subdomains and cached redirects.  
+**Fix:** Add to `next.config.ts` headers:
+```ts
+{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }
+```
+
+---
+
+### E-4. `package.json` missing `engines` field
+**File:** `web/package.json`  
+The web app requires Node 18+ for the Web Crypto API (`crypto.subtle`). Vercel defaults to 18+, but there is no explicit constraint preventing a misconfigured build environment from using an older runtime, which would cause silent crypto failures.  
+**Fix:** Add to `web/package.json`:
+```json
+"engines": { "node": ">=18" }
+```
+
+---
+
+### E-5. `guest_sessions` table will grow unbounded
+**Table:** `guest_sessions` (Supabase)  
+Revoked and expired session rows are never deleted. With 30-day expiry × any user volume, the table accumulates indefinitely. The partial index (`WHERE revoked_at IS NULL`) keeps active-session lookups fast, but the dead rows add storage cost and cold-start overhead over time.  
+**Fix:** Add a `pg_cron` rule to purge old rows weekly:
+```sql
+SELECT cron.schedule(
+  'cleanup-expired-guest-sessions',
+  '0 3 * * 0',  -- 03:00 UTC every Sunday
+  $$DELETE FROM guest_sessions WHERE expires_at < now() - interval '7 days'$$
+);
+```
+Or add a cleanup step to the daily pipeline workflow that calls `supabase.table("guest_sessions").delete().lt("expires_at", ...)`.
+
+---
+
+### E-6. `scoring_priorities` doesn't accept snake_case in PATCH
+**File:** `web/app/api/users/config/route.ts` — `ALLOWED_FIELDS`  
+Every other field in `ALLOWED_FIELDS` has both a camelCase and snake_case entry (e.g. `digestHour` and `digest_hour`). `scoringPriorities` only has the camelCase entry. If any client ever sends `scoring_priorities` in snake_case, the update is silently dropped. Low impact if the frontend always sends camelCase, but inconsistent with the rest of the handler.  
+**Fix:** Add `scoring_priorities: "scoring_priorities"` to `ALLOWED_FIELDS`.
 
 ---
 
