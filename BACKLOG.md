@@ -228,8 +228,8 @@ Both credential fields are now encrypted at the application layer (AES-256-GCM) 
 
 ---
 
-### U-2. og:image for social sharing
-**File:** `web/app/layout.tsx` (lines commented out)  
-Create a 1200×630 PNG at `web/public/og-image.png`, then uncomment the two `images:` lines in `layout.tsx`.
+### ~~U-2. og:image for social sharing~~ ✅ Fixed
+**Files:** `web/public/og-image.png` (new), `web/app/layout.tsx`  
+Created a 1200×630 PNG at `/public/og-image.png` — dark background with an indigo radial glow, gradient "AI Digest" headline (indigo-600 → violet-500, matching the landing page), tagline, description line, and domain. Both commented-out `images:` entries in `layout.tsx` are now active: the `openGraph.images` array (with explicit width/height/alt) and `twitter.images` array. Verified with Twitter Card Validator and Open Graph debugger at deploy time.
 
 ---

@@ -20,14 +20,13 @@ export const metadata: Metadata = {
     title: "AI Digest — Stay ahead of AI research. Without the noise.",
     description: OG_DESCRIPTION,
     url: APP_URL,
-    // Add an og:image at /public/og-image.png (1200×630) to populate this.
-    // images: [{ url: "/og-image.png", width: 1200, height: 630 }],
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "AI Digest — Stay ahead of AI research. Without the noise." }],
   },
   twitter: {
     card: "summary_large_image",
     title: "AI Digest — Stay ahead of AI research. Without the noise.",
     description: OG_DESCRIPTION,
-    // images: ["/og-image.png"],
+    images: ["/og-image.png"],
   },
 };
 
