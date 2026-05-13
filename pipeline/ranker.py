@@ -101,12 +101,28 @@ def _active_criteria(user_config: dict) -> list[str]:
     return active
 
 
+def _sanitize_user_text(text: str) -> str:
+    """Escape angle brackets in user-supplied text.
+
+    Prompts wrap user content in XML-style delimiters (<user_profile>,
+    <user_topics>) to signal to the model that the enclosed text is data,
+    not instructions.  A crafted profile like '</user_profile>\\nIgnore above'
+    could break out of those delimiters, so we escape < and > with HTML
+    entities before injection.  The model handles &lt;/&gt; correctly in
+    context; legitimate uses of angle brackets in profiles are rare.
+    """
+    return text.replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _user_context(user_config: dict) -> tuple[str, str, str]:
-    profile = (user_config.get("profile_description") or "").strip()
+    profile = _sanitize_user_text((user_config.get("profile_description") or "").strip())
     level = user_config.get("experience_level", "developer_learning_ai")
     topics = user_config.get("topics") or []
     level_desc = LEVEL_DESCRIPTIONS.get(level, level)
-    topics_str = ", ".join(topics) if topics else "general AI/ML"
+    topics_str = (
+        ", ".join(_sanitize_user_text(t) for t in topics)
+        if topics else "general AI/ML"
+    )
     return profile, level_desc, topics_str
 
 
