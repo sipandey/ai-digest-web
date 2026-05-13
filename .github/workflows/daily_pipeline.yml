@@ -3,7 +3,10 @@
 # Required GitHub secrets:
 #   OPENAI_API_KEY            — shared across all users for GPT-4o-mini scoring
 #   SUPABASE_URL              — project URL  (e.g. https://xyz.supabase.co)
-#   SUPABASE_SERVICE_ROLE_KEY — service role key, bypasses RLS
+#   SUPABASE_ANON_KEY         — anon/public key, used only by the lightweight
+#                               'check' job (read-only, two columns, no PII)
+#   SUPABASE_SERVICE_ROLE_KEY — service role key, bypasses RLS; used only by
+#                               the 'pipeline' job that needs full DB access
 #
 # Notion tokens and database IDs are stored per-user in Supabase
 # and are NOT stored as GitHub secrets.
@@ -74,7 +77,12 @@ jobs:
         id: count
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Anon key, not the service role key — the check query only needs
+          # digest_hour and timezone_offset for active users (read-only, no PII).
+          # A scoped RLS policy + column-level GRANT limits anon to exactly those
+          # two columns. If this key were ever leaked from a log, blast radius is
+          # zero — it can't read user IDs, emails, tokens, or write anything.
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           # Current UTC hour as a plain integer (no leading zero).
@@ -95,9 +103,11 @@ jobs:
 
           # Fetch all active users that have Notion connected.
           # Only the two scheduling fields are needed — keep the payload small.
+          # Uses the anon key (not service role) — an RLS policy + column-level
+          # GRANT restricts anon to exactly digest_hour and timezone_offset.
           RESPONSE=$(curl -sf \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
             "${SUPABASE_URL}/rest/v1/user_configs?select=digest_hour,timezone_offset&active=eq.true&notion_connected=eq.true")
 
           if [[ $? -ne 0 ]]; then

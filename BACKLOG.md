@@ -122,10 +122,12 @@ Added a `user.updated` handler between the `user.deleted` and `user.created` blo
 
 ---
 
-### M-6. GitHub Actions `check` job uses service role key for a read-only query
-**File:** `.github/workflows/daily_pipeline.yml`  
-The scheduling check only needs `digest_hour` and `timezone_offset` from `user_configs` — a public read. It currently uses `SUPABASE_SERVICE_ROLE_KEY`, which has full DB write access and bypasses RLS. If a workflow log accidentally exposes the key, the blast radius is the entire database.  
-**Fix:** Create a Supabase anon/read-only role for this query, or add a minimal public RLS policy on those two columns and use `SUPABASE_ANON_KEY` in the check step.
+### ~~M-6. GitHub Actions `check` job uses service role key for a read-only query~~ ✅ Fixed
+**Files:** `.github/workflows/daily_pipeline.yml`, `supabase/migrations/20250513_anon_scheduling_read.sql`  
+The check step now uses `SUPABASE_ANON_KEY` instead of `SUPABASE_SERVICE_ROLE_KEY`. A new migration grants the `anon` role SELECT on only `(digest_hour, timezone_offset)` via a column-level GRANT, plus an RLS policy scoped to `active = true AND notion_connected = true`. If the anon key leaks from a log, blast radius is zero — no user IDs, emails, tokens, or write access. The pipeline job still uses the service role key.  
+**Required actions:**  
+1. Run migration `20250513_anon_scheduling_read.sql` in Supabase SQL Editor  
+2. Add `SUPABASE_ANON_KEY` as a GitHub secret (Supabase dashboard → Settings → API → anon/public key)
 
 ---
 
