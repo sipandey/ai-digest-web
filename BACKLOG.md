@@ -85,10 +85,9 @@ When `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` are absent (local dev
 
 ## 🟡 Medium — Security / Reliability
 
-### M-1. `_upsert_run()` is outside the per-user try/except — pipeline-wide crash risk
-**File:** `pipeline/pipeline.py` line ~221  
-`_upsert_run()` is called before the `try:` block that protects per-user work. If it raises (e.g. unique constraint on a concurrent trigger), the exception propagates past the inner handler and can kill the entire batch run for all remaining users.  
-**Fix:** Move `run_id = _upsert_run(...)` inside the per-user try/except, and convert `_upsert_run` to use a true upsert (INSERT … ON CONFLICT DO UPDATE) instead of a read-then-write.
+### ~~M-1. `_upsert_run()` is outside the per-user try/except — pipeline-wide crash risk~~ ✅ Fixed
+**File:** `pipeline/pipeline.py`  
+`_upsert_run()` now uses a true `INSERT … ON CONFLICT DO UPDATE` (atomic upsert via Supabase `.upsert(on_conflict="user_id,run_date")`). `run_id = _upsert_run(...)` is inside the per-user `try/except` block with `run_id: str = ""` as a guard, so any DB error during upsert is caught, the failure is logged and counted, and the loop continues to the next user.
 
 ---
 
