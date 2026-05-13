@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "@/lib/ratelimit";
+import { isValidNotionDatabaseId, cleanNotionDatabaseId } from "@/lib/notion";
 
 const NOTION_API = "https://api.notion.com/v1";
 const NOTION_VERSION = "2022-06-28";
@@ -39,7 +40,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const cleanDbId = notionDatabaseId.replace(/-/g, "");
+  if (!isValidNotionDatabaseId(notionDatabaseId)) {
+    return NextResponse.json(
+      { success: false, error: "Invalid Notion database ID format." },
+      { status: 400 },
+    );
+  }
+
+  const cleanDbId = cleanNotionDatabaseId(notionDatabaseId);
 
   try {
     const res = await fetch(`${NOTION_API}/databases/${cleanDbId}`, {

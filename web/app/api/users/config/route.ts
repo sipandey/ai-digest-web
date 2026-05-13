@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getAuthUserId, resolveUserById } from "@/lib/auth";
 import { encrypt, decrypt } from "@/lib/encryption";
+import { isValidNotionDatabaseId, cleanNotionDatabaseId } from "@/lib/notion";
 
 // ── Notion validation helper (mirrors /api/guest/setup) ──────────────────────
 
@@ -23,7 +24,10 @@ async function validateNotionCredentials(
       return { ok: false, error: "Invalid integration token — check your Notion integration secret." };
     }
 
-    const cleanId = databaseId.replace(/-/g, "");
+    if (!isValidNotionDatabaseId(databaseId)) {
+      return { ok: false, error: "Invalid Notion database ID format." };
+    }
+    const cleanId = cleanNotionDatabaseId(databaseId);
     const dbRes = await fetch(`https://api.notion.com/v1/databases/${cleanId}`, { headers, signal });
     if (dbRes.status === 404) {
       return { ok: false, error: "Database not found — make sure you shared it with your integration." };

@@ -17,6 +17,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { createSessionToken, buildSetCookieHeader } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { encrypt } from "@/lib/encryption";
+import { isValidNotionDatabaseId, cleanNotionDatabaseId } from "@/lib/notion";
 
 const NOTION_VERSION = "2022-06-28";
 
@@ -84,7 +85,13 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 2. Validate database access ────────────────────────────────────────────
-  const dbId = notionDatabaseId.replace(/-/g, "");
+  if (!isValidNotionDatabaseId(notionDatabaseId)) {
+    return NextResponse.json(
+      { error: "Invalid Notion database ID format." },
+      { status: 400 },
+    );
+  }
+  const dbId = cleanNotionDatabaseId(notionDatabaseId);
   const dbRes = await notionGet(`/databases/${dbId}`, notionToken);
   if (!dbRes.ok) {
     return NextResponse.json(

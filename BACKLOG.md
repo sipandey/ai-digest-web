@@ -91,14 +91,9 @@ When `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` are absent (local dev
 
 ---
 
-### M-2. `notionDatabaseId` not validated as UUID before use in URL construction
-**Files:** `web/app/api/guest/setup/route.ts`, `web/app/api/users/config/route.ts`, `web/app/api/users/test-notion/route.ts`  
-After stripping hyphens, the value is used directly in `https://api.notion.com/v1/databases/${cleanDbId}`. A value like `../pages/abc123` becomes a path-traversal, turning the server into a Notion API proxy for arbitrary endpoints.  
-**Fix:** Reject any value that isn't exactly 32 hex characters after hyphen removal:
-```ts
-if (!/^[0-9a-f]{32}$/i.test(cleanDbId))
-  return NextResponse.json({ error: "Invalid database ID format" }, { status: 400 });
-```
+### ~~M-2. `notionDatabaseId` not validated as UUID before use in URL construction~~ ✅ Fixed
+**Files:** `web/lib/notion.ts` (new), `web/app/api/guest/setup/route.ts`, `web/app/api/users/config/route.ts`, `web/app/api/users/test-notion/route.ts`  
+Added `isValidNotionDatabaseId()` and `cleanNotionDatabaseId()` helpers in `web/lib/notion.ts`. All three routes now validate the ID is exactly 32 hex characters after hyphen removal before constructing any Notion API URL. Any non-conforming value is rejected with a `400` before any network call is made.
 
 ---
 
