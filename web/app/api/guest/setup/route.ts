@@ -33,7 +33,7 @@ async function notionGet(path: string, token: string) {
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const { allowed } = rateLimit(`guest-setup:${ip}`, { limit: 5, windowMs: 60_000 });
+  const { allowed } = await rateLimit(`guest-setup:${ip}`, { limit: 5, windowMs: 60_000 });
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests — please wait a minute." },

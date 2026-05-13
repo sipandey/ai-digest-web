@@ -15,7 +15,7 @@ const NOTION_VERSION = "2022-06-28";
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const { allowed } = rateLimit(`test-notion:${ip}`, { limit: 10, windowMs: 60_000 });
+  const { allowed } = await rateLimit(`test-notion:${ip}`, { limit: 10, windowMs: 60_000 });
   if (!allowed) {
     return NextResponse.json(
       { success: false, error: "Too many requests — please wait a minute." },

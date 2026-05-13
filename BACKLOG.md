@@ -75,10 +75,11 @@ Validation applied to both the POST (onboarding) and PATCH (settings) handlers. 
 
 ---
 
-### H-5. Replace in-memory rate limiter with distributed enforcement
+### ~~H-5. Replace in-memory rate limiter with distributed enforcement~~ ✅ Fixed
 **File:** `web/lib/ratelimit.ts`  
-The `rateLimit()` function stores state in a `Map` in process memory. On Vercel each serverless invocation can be a fresh cold instance, so limits on `/api/guest/setup` (5/min), `/api/guest/verify` (10/min), and `/api/users/test-notion` (10/min) are non-functional in production.  
-**Fix:** Swap the `Map` for [Upstash Redis + @upstash/ratelimit](https://upstash.com/docs/redis/sdks/ratelimit-ts/overview). One free Upstash database is sufficient. All existing `rateLimit()` call sites stay the same — only the implementation changes.
+Replaced the in-process `Map` with Upstash Redis + `@upstash/ratelimit` (sliding-window algorithm). `rateLimit()` is now async and backed by a distributed store that persists across Vercel cold starts. All three call sites (`/api/guest/setup` 5/min, `/api/guest/verify` 10/min, `/api/users/test-notion` 10/min) updated to `await rateLimit(...)`.  
+When `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` are absent (local dev), the function falls back to the previous in-memory implementation automatically.  
+**Required action:** Add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to Vercel environment variables (copy from Upstash Console → your database → REST API tab).
 
 ---
 
