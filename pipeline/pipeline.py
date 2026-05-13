@@ -226,7 +226,20 @@ def main() -> None:
     skip_time_filter = os.environ.get("PIPELINE_SKIP_TIME_FILTER", "").lower() == "true"
 
     utc_now = datetime.now(timezone.utc)
-    utc_hour = utc_now.hour
+    # Prefer the UTC hour captured by the check job (before pip install adds
+    # 2-5 min of startup latency).  This prevents users due at hour N from
+    # being skipped when job startup pushes Python into hour N+1.
+    # Falls back to the live clock for manual dispatches or local runs where
+    # PIPELINE_UTC_HOUR is not set.
+    utc_hour_env = os.environ.get("PIPELINE_UTC_HOUR", "").strip()
+    if utc_hour_env.isdigit():
+        utc_hour = int(utc_hour_env)
+        log.info(
+            "UTC hour from check job",
+            extra={"pipeline_utc_hour": utc_hour, "actual_utc_hour": utc_now.hour},
+        )
+    else:
+        utc_hour = utc_now.hour
 
     log.info(
         "Pipeline starting",

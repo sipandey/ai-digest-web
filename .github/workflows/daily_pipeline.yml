@@ -67,6 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       users_due: ${{ steps.count.outputs.users_due }}
+      utc_hour:  ${{ steps.count.outputs.utc_hour }}
 
     steps:
       - name: Count users due at this UTC hour
@@ -76,16 +77,21 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
+          # Current UTC hour as a plain integer (no leading zero).
+          # Captured ONCE here so the pipeline job uses the same value —
+          # job startup (checkout + pip install) adds 2-5 min and would
+          # otherwise push Python into the next clock hour, causing users
+          # due at the current hour to be skipped.
+          UTC_HOUR=$(date -u +%-H)
+          echo "Current UTC hour: $UTC_HOUR"
+          echo "utc_hour=${UTC_HOUR}" >> "$GITHUB_OUTPUT"
+
           # Manual dispatches always proceed — skip the time check.
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "Manual dispatch — skipping time filter"
             echo "users_due=forced" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          # Current UTC hour as a plain integer (no leading zero).
-          UTC_HOUR=$(date -u +%-H)
-          echo "Current UTC hour: $UTC_HOUR"
 
           # Fetch all active users that have Notion connected.
           # Only the two scheduling fields are needed — keep the payload small.
@@ -171,4 +177,8 @@ jobs:
           # Scheduled runs apply it — check job already confirmed users are due,
           # but pipeline.py re-checks to handle edge cases (e.g. concurrent runs).
           PIPELINE_SKIP_TIME_FILTER: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+          # Pass the UTC hour captured by the check job so pipeline.py uses the
+          # same value — avoids skipping users when job startup (checkout + pip)
+          # pushes execution into the next clock hour.
+          PIPELINE_UTC_HOUR: ${{ needs.check.outputs.utc_hour }}
         run: python pipeline.py
