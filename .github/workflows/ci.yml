@@ -1,17 +1,20 @@
-name: Pipeline tests
+name: CI
 
 on:
   push:
     paths:
       - "pipeline/**"
+      - "web/**"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "pipeline/**"
+      - "web/**"
       - ".github/workflows/ci.yml"
 
 jobs:
-  test:
+  # ── Python pipeline tests ─────────────────────────────────────────────────
+  pytest:
     name: pytest (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
@@ -39,3 +42,30 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short
+
+  # ── TypeScript web tests ──────────────────────────────────────────────────
+  vitest:
+    name: vitest (Node 22)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        # --ignore-scripts: skip postinstall hooks in @clerk/shared that require
+        # a newer Node than the system default on ubuntu-latest runners.
+        run: npm ci --ignore-scripts
+
+      - name: Run tests
+        run: npm test

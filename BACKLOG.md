@@ -254,26 +254,9 @@ Also add `user.updated` to Clerk webhook subscribed events (for email/name sync 
 
 ## 🔵 Engineering Hygiene
 
-### E-1. CI does not run the web test suite
-**Files:** `.github/workflows/ci.yml`  
-`ci.yml` only triggers on `pipeline/**` changes and only runs pytest. The 93-test vitest suite (`session.ts`, `guest-sessions.ts`, `proxy.ts`, `logout route`) never runs in CI. A regression in session signing, middleware auth, or guest revocation logic would merge silently.  
-**Fix:** Add a `web-tests` job to `ci.yml` triggered on `web/**` changes:
-```yaml
-web-tests:
-  runs-on: ubuntu-latest
-  defaults:
-    run:
-      working-directory: web
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: "22"
-        cache: npm
-        cache-dependency-path: web/package-lock.json
-    - run: npm ci --ignore-scripts
-    - run: npm test
-```
+### ~~E-1. CI does not run the web test suite~~ ✅ Fixed
+**File:** `.github/workflows/ci.yml`  
+Added a `vitest` job that runs on Node 22 (required by vitest 4's rolldown bundler) whenever `web/**` changes. Uses `npm ci --ignore-scripts` to skip the `@clerk/shared` postinstall hook that requires a newer Node than the ubuntu-latest system default. `GUEST_SESSION_SECRET` is set by `lib/__tests__/setup.ts` so no CI secret is needed. The workflow is renamed from "Pipeline tests" to "CI" to reflect both jobs. The 93 vitest tests covering session signing, guest revocation, middleware route protection, and the logout CSRF guard now block every PR that touches `web/`.
 
 ---
 
