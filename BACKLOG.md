@@ -160,9 +160,9 @@ Added a `guest_sessions` table (jti UUID PK, user_id FK, expires_at, revoked_at)
 
 ---
 
-### L-2. Protected routes have no Next.js middleware guard
-**Problem:** `/dashboard` and `/settings` are protected only by client-side `useEffect` redirects. There is no proxy middleware. The page briefly renders before the auth check fires, and any JavaScript-disabling client bypasses the redirect entirely (though the API routes still enforce auth).  
-**Fix:** Add Clerk's `clerkMiddleware()` in `web/proxy.ts` (Next.js 16 middleware file) with a route matcher for `/dashboard` and `/settings`. Note: `proxy.ts` now exists for CSP nonce generation (H-2b) — route protection can be added there.
+### ~~L-2. Protected routes have no Next.js middleware guard~~ ✅ Fixed
+**File:** `web/proxy.ts`  
+`clerkMiddleware()` from `@clerk/nextjs/server` was added to the existing `proxy.ts` middleware (which already handled CSP nonce generation). A `createRouteMatcher` allowlist marks public routes (`/`, `/signup(.*)`, `/login(.*)`, `/setup(.*)`, `/privacy`, `/terms`, `/api/auth/webhook(.*)`, `/api/guest/(.*)`, `/api/users/test-notion`). All other routes require either a Clerk session or a valid `__digest_sid` guest cookie; missing auth redirects to `/`. This prevents the brief render flash and protects against JS-disabled clients at the Edge — no server-round-trip required. Tests added in `web/lib/__tests__/proxy.test.ts`.
 
 ---
 
