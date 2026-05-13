@@ -15,23 +15,41 @@ import { verifySessionToken, buildClearCookieHeader, COOKIE_NAME } from "@/lib/s
 import { revokeGuestSession } from "@/lib/guest-sessions";
 
 export async function POST(req: NextRequest) {
-  // Extract jti from the current cookie (if present) and revoke it.
-  // We do this best-effort — a missing or unverifiable token still clears the
-  // cookie; we just can't do a DB revocation in that case.
   const cookieHeader = req.headers.get("cookie") ?? "";
   const match = cookieHeader.match(
     new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`),
   );
-  if (match) {
-    const token = decodeURIComponent(match[1]);
-    try {
-      const payload = await verifySessionToken(token);
-      if (payload?.jti) {
-        await revokeGuestSession(payload.jti);
-      }
-    } catch {
-      // Verification failure is fine — we still clear the cookie below.
+
+  // ── CSRF guard ──────────────────────────────────────────────────────────────
+  // Require the session cookie to be present before doing anything.
+  //
+  // Why: SameSite=Lax already prevents cross-site POSTs from including the
+  // cookie, so an absent cookie is a reliable signal of either:
+  //   (a) a CSRF attempt from a different origin, or
+  //   (b) a caller with no active guest session.
+  //
+  // In both cases there is nothing to revoke and no cookie to clear — returning
+  // 401 here is defence-in-depth on top of the proxy middleware redirect and
+  // the SameSite constraint.  The attacker cannot reach the "success" branch
+  // without already having the victim's cookie.
+  if (!match) {
+    return NextResponse.json(
+      { error: "No active guest session to sign out of" },
+      { status: 401 },
+    );
+  }
+
+  // Cookie present — attempt to extract jti and revoke the session server-side.
+  // This is best-effort: a tampered or expired token still gets its cookie
+  // cleared so the user's browser is cleaned up.
+  const token = decodeURIComponent(match[1]);
+  try {
+    const payload = await verifySessionToken(token);
+    if (payload?.jti) {
+      await revokeGuestSession(payload.jti);
     }
+  } catch {
+    // Verification failure is fine — we still clear the cookie below.
   }
 
   const response = NextResponse.json({ success: true });

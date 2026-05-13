@@ -188,9 +188,11 @@ Three-layer defence against prompt injection via crafted arXiv titles/abstracts:
 
 ---
 
-### L-5. No CSRF protection on state-changing routes
-**Problem:** All state-changing routes rely on `SameSite=Lax` cookie behaviour for implicit CSRF protection. `Lax` blocks cross-site POSTs from including the cookie but does not protect all top-level navigation scenarios. The `POST /api/auth/logout` endpoint has no session check at all — a CSRF logout is trivially achievable (impact: forced sign-out only).  
-**Fix:** For the logout endpoint, verify the session cookie is present before clearing it. For other routes, `SameSite=Lax` is sufficient for now; add `SameSite=Strict` or an explicit `Origin` header check if CSRF becomes a higher priority.
+### ~~L-5. No CSRF protection on state-changing routes~~ ✅ Fixed
+**Files:** `web/app/api/auth/logout/route.ts`, `web/lib/__tests__/logout.test.ts` (new)  
+`POST /api/auth/logout` now requires the `__digest_sid` cookie to be present before doing anything. If the cookie is absent — a reliable CSRF signal since `SameSite=Lax` prevents cross-site POSTs from sending the cookie — the route returns `401` immediately without touching any server state. This is defence-in-depth on top of the existing `SameSite=Lax` constraint and the proxy middleware redirect: an attacker cannot reach the success branch without already possessing the victim's cookie.  
+For other state-changing routes (`/api/users/config`, `/api/pipeline/trigger`), `SameSite=Lax` is sufficient — all are already protected by `requireGuestAuth()` / Clerk session checks, which reject requests without valid credentials.  
+19 tests added in `web/lib/__tests__/logout.test.ts` covering CSRF guard (no cookie → 401, no side effects), normal logout (valid jti → 200, cookie cleared, revocation called), invalid/expired token (best-effort cookie clear, no revocation), legacy token, and unexpected throws.
 
 ---
 
