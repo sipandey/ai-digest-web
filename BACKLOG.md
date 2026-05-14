@@ -261,15 +261,9 @@ Added a `vitest` job that runs on Node 22 (required by vitest 4's rolldown bundl
 
 ---
 
-### E-2. `.env.example` is incomplete and has a phantom variable
+### ~~E-2. `.env.example` is incomplete and has a phantom variable~~ ✅ Fixed
 **File:** `.env.example`  
-Variables used in production code but missing from `.env.example`:
-- `NEXT_PUBLIC_APP_URL` — if absent, `metadataBase` uses hardcoded `https://aidigest.app`; staging/preview deployments generate wrong OG metadata
-- `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — critical for distributed rate limiting in prod
-- `SUPABASE_URL` — non-`NEXT_PUBLIC` version used by all server-side routes; `NEXT_PUBLIC_SUPABASE_URL` is not a substitute in Node.js server context
-- `SYSTEM_DAILY_RUN_BUDGET` — optional override, but should be documented
-
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` is in `.env.example` but is **never referenced** in any web `.ts`/`.tsx` file (the web app uses only `supabaseAdmin` via the service role key). Remove it or add a comment explaining it is only needed as a GitHub Actions secret.
+Added all missing variables: `SUPABASE_URL` (non-`NEXT_PUBLIC`, required for server-side routes), `NEXT_PUBLIC_APP_URL` (with per-environment guidance), `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (with fallback note), and `SYSTEM_DAILY_RUN_BUDGET` (commented out, documents the default). Replaced `NEXT_PUBLIC_SUPABASE_ANON_KEY` with an explanatory comment clarifying it is only a GitHub Actions secret and must not be added to Vercel or `web/.env.local`.
 
 ---
 
