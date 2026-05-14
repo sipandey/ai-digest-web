@@ -228,6 +228,7 @@ Both credential fields are now encrypted at the application layer (AES-256-GCM) 
 **Required actions:**
 1. Run `20250513_guest_sessions.sql` in Supabase SQL Editor
 2. Run `20250513_anon_scheduling_read.sql` in Supabase SQL Editor
+3. Enable pg_cron (Database → Extensions → pg_cron → Enable), then run `20250514_cleanup_guest_sessions_cron.sql`
 
 ---
 
@@ -292,18 +293,13 @@ The web app requires Node 18+ for the Web Crypto API (`crypto.subtle`). Vercel d
 
 ---
 
-### E-5. `guest_sessions` table will grow unbounded
-**Table:** `guest_sessions` (Supabase)  
-Revoked and expired session rows are never deleted. With 30-day expiry × any user volume, the table accumulates indefinitely. The partial index (`WHERE revoked_at IS NULL`) keeps active-session lookups fast, but the dead rows add storage cost and cold-start overhead over time.  
-**Fix:** Add a `pg_cron` rule to purge old rows weekly:
-```sql
-SELECT cron.schedule(
-  'cleanup-expired-guest-sessions',
-  '0 3 * * 0',  -- 03:00 UTC every Sunday
-  $$DELETE FROM guest_sessions WHERE expires_at < now() - interval '7 days'$$
-);
-```
-Or add a cleanup step to the daily pipeline workflow that calls `supabase.table("guest_sessions").delete().lt("expires_at", ...)`.
+### ~~E-5. `guest_sessions` table will grow unbounded~~ ✅ Fixed
+**File:** `supabase/migrations/20250514_cleanup_guest_sessions_cron.sql`  
+Added a `pg_cron` job that runs at 03:00 UTC every Sunday and deletes `guest_sessions` rows whose `expires_at` is more than 7 days in the past. The 7-day grace period preserves recently-expired rows for debugging before the evidence is gone. The partial index (`WHERE revoked_at IS NULL`) that covers active-session lookups is unaffected.  
+**Required actions:**
+1. Enable pg_cron in the Supabase dashboard: **Database → Extensions → pg_cron → Enable**
+2. Run `20250514_cleanup_guest_sessions_cron.sql` in Supabase SQL Editor
+3. Verify with: `SELECT jobname, schedule, active FROM cron.job WHERE jobname = 'cleanup-expired-guest-sessions';`
 
 ---
 
