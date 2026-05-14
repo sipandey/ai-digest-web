@@ -180,7 +180,7 @@ export async function POST() {
     // Resolve user + config in one query
     const { data: user, error: userError } = await supabaseAdmin
       .from("users")
-      .select("id, user_configs(notion_connected)")
+      .select("id, user_configs(notion_connected, updated_at)")
       .eq("id", userId)
       .single();
 
@@ -188,8 +188,9 @@ export async function POST() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const configs = user.user_configs as { notion_connected: boolean }[];
+    const configs = user.user_configs as { notion_connected: boolean; updated_at: string | null }[];
     const notionConnected = configs?.[0]?.notion_connected ?? false;
+    const configUpdatedAt = configs?.[0]?.updated_at ?? null;
 
     if (!notionConnected) {
       return NextResponse.json(
@@ -225,6 +226,28 @@ export async function POST() {
       const triggerCount = existingRun.trigger_count ?? 1;
       const ranSuccessfully =
         existingRun.status === "complete" || existingRun.status === "empty";
+
+      // ── Config-unchanged cache — skip rerun if config hasn't changed ─────────
+      // If the last run was successful and the user's config was last modified
+      // before that run completed, the output would be identical — return the
+      // cached result immediately without dispatching or incrementing trigger_count.
+      // Failed runs always proceed: the user shouldn't be stuck waiting for a
+      // run that errored out before producing anything.
+      if (
+        ranSuccessfully &&
+        existingRun.completed_at &&
+        configUpdatedAt &&
+        new Date(configUpdatedAt) <= new Date(existingRun.completed_at)
+      ) {
+        return NextResponse.json({
+          success: true,
+          runId: existingRun.id,
+          runsRemainingToday: MAX_DAILY_TRIGGERS - triggerCount,
+          cached: true,
+          message:
+            "Your digest is already up to date. Update your topics or preferences to generate a new one.",
+        });
+      }
 
       // ── 5-minute cooldown — only after a successful run ───────────────────────
       // Failed runs allow an immediate retry so the user isn't penalised for
