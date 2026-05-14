@@ -277,13 +277,9 @@ The security header set has `X-Frame-Options`, `X-Content-Type-Options`, `Referr
 
 ---
 
-### E-4. `package.json` missing `engines` field
+### ~~E-4. `package.json` missing `engines` field~~ ✅ Fixed
 **File:** `web/package.json`  
-The web app requires Node 18+ for the Web Crypto API (`crypto.subtle`). Vercel defaults to 18+, but there is no explicit constraint preventing a misconfigured build environment from using an older runtime, which would cause silent crypto failures.  
-**Fix:** Add to `web/package.json`:
-```json
-"engines": { "node": ">=18" }
-```
+Added `"engines": { "node": ">=18" }` to prevent misconfigured build environments from using an older runtime that lacks the Web Crypto API (`crypto.subtle`).
 
 ---
 
