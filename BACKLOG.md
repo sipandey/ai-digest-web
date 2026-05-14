@@ -297,10 +297,9 @@ Added a `pg_cron` job that runs at 03:00 UTC every Sunday and deletes `guest_ses
 
 ---
 
-### E-6. `scoring_priorities` doesn't accept snake_case in PATCH
+### ~~E-6. `scoring_priorities` doesn't accept snake_case in PATCH~~ ✅ Fixed
 **File:** `web/app/api/users/config/route.ts` — `ALLOWED_FIELDS`  
-Every other field in `ALLOWED_FIELDS` has both a camelCase and snake_case entry (e.g. `digestHour` and `digest_hour`). `scoringPriorities` only has the camelCase entry. If any client ever sends `scoring_priorities` in snake_case, the update is silently dropped. Low impact if the frontend always sends camelCase, but inconsistent with the rest of the handler.  
-**Fix:** Add `scoring_priorities: "scoring_priorities"` to `ALLOWED_FIELDS`.
+Added `scoring_priorities: "scoring_priorities"` to the snake_case block in `ALLOWED_FIELDS`, matching the pattern of every other field in the handler.
 
 ---
 

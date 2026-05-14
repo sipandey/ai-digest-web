@@ -225,6 +225,7 @@ export async function PATCH(req: NextRequest) {
       experience_level: "experience_level",
       digest_hour: "digest_hour",
       timezone_offset: "timezone_offset",
+      scoring_priorities: "scoring_priorities",
     };
 
     const updates: Record<string, unknown> = {};
