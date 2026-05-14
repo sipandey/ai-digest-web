@@ -106,18 +106,24 @@ def _target_utc_hour(user_config: dict) -> int:
 
 
 def _is_user_due(user_config: dict, utc_hour: int) -> bool:
-    """Return True when this user's digest is due at *utc_hour* or the
-    previous hour.
+    """Return True when this user's target UTC hour has arrived or passed today.
 
-    The two-hour window (current hour + previous hour) absorbs GitHub Actions
-    cron delays, which routinely run 30–60+ minutes late.  Double-delivery is
-    prevented separately by _already_delivered_today(), which checks whether
-    the user already has a successful pipeline_runs row for today before any
-    work starts.
+    Uses a cumulative window (target <= utc_hour) rather than a fixed two-hour
+    window.  If the scheduled check at, say, UTC 01:00 is missed — due to a
+    GitHub Actions delay, a transient DB permission error, or any other reason
+    — every subsequent hourly check automatically picks the user up.
+
+    Double-delivery is prevented by _already_delivered_today(): once a user
+    has a 'complete' or 'empty' pipeline_runs row for today, they are skipped
+    regardless of how many later checks include them.
+
+    Note: users whose target_utc_hour is 23 are NOT caught at UTC 00:00 on the
+    next calendar day (23 <= 0 is false).  If their 11 PM slot is missed they
+    wait until 11 PM the following day — an acceptable trade-off for eliminating
+    the cross-midnight ambiguity in the old two-hour window.
     """
     target = _target_utc_hour(user_config)
-    prev_hour = (utc_hour - 1) % 24
-    return target == utc_hour or target == prev_hour
+    return target <= utc_hour
 
 
 def _already_delivered_today(user_id: str, run_date: str) -> bool:
@@ -128,8 +134,8 @@ def _already_delivered_today(user_id: str, run_date: str) -> bool:
     a valid delivery attempt that should not be repeated.
 
     This guard prevents a second delivery when a user is caught by the
-    two-hour catch-up window (i.e. their cron run fired late and now the
-    next hour's run picks them up again).
+    cumulative window (i.e. the user was already delivered at an earlier hour
+    but later checks still see target <= utc_hour).
     """
     result = (
         supabase.table("pipeline_runs")
@@ -343,8 +349,9 @@ def main() -> None:
 
         try:
             # Guard: skip if already successfully delivered today.
-            # This prevents double-delivery when the two-hour catch-up window
-            # picks up a user whose scheduled cron run fired late.
+            # The cumulative window (target <= utc_hour) means a user may appear
+            # in every hourly check after their target hour. This prevents a
+            # second delivery once the first run completed.
             if _already_delivered_today(user_id, run_date):
                 log.info(
                     "User already delivered today — skipping",

@@ -73,7 +73,7 @@ jobs:
       utc_hour:  ${{ steps.count.outputs.utc_hour }}
 
     steps:
-      - name: Count users due at this UTC hour
+      - name: Count users due at or before this UTC hour
         id: count
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -116,35 +116,29 @@ jobs:
             exit 0
           fi
 
-          # Previous UTC hour (wraps midnight: 0 → 23).
-          # Used to catch users missed when GitHub Actions delays a cron run
-          # past the top of the intended hour (delays of 30-60+ min are common).
-          # Python uses the same two-hour window and guards against double-delivery
-          # by checking whether the user already has a successful run today.
-          PREV_HOUR=$(( (UTC_HOUR - 1 + 24) % 24 ))
-          echo "Previous UTC hour (catch-up): $PREV_HOUR"
-
-          # Count users whose (digest_hour - timezone_offset) rounds to UTC_HOUR
-          # OR PREV_HOUR.
+          # Count users whose target UTC hour is <= UTC_HOUR (cumulative window).
+          #
+          # Cumulative rather than fixed two-hour window: if a user's 1 AM check
+          # was missed (DB permission error, Actions delay, etc.) every subsequent
+          # hourly check will pick them up automatically. _already_delivered_today()
+          # in pipeline.py prevents double-delivery once a run completes.
           #
           # Round BEFORE the modulo — jq's % truncates floats to integers before
           # performing the division, so 1.5 % 24 = 1, not 1.5. Rounding first
           # (1.5 | round = 2, then 2 % 24 = 2) matches Python's behaviour.
-          # jq uses "round half away from zero" (2.5→3); Python is updated to match.
+          # jq uses "round half away from zero" (2.5→3); Python uses the same rule.
           #
           # The double-mod ((x % 24) + 24) % 24 keeps the result positive even
-          # when digest_hour < timezone_offset (e.g. 1am UTC+8 → 17:00 UTC).
+          # when digest_hour < timezone_offset (e.g. 1am UTC+8 → target 17:00 UTC).
           # tonumber coercion: Supabase returns NUMERIC columns as JSON strings
-          # (e.g. "5.50" not 5.5). tonumber handles both strings and numbers so
-          # the formula keeps working even during a migration window where some
-          # rows still have the old NUMERIC type.
-          COUNT=$(echo "$RESPONSE" | jq --argjson h "$UTC_HOUR" --argjson p "$PREV_HOUR" \
+          # (e.g. "5.50" not 5.5). tonumber handles both strings and numbers.
+          COUNT=$(echo "$RESPONSE" | jq --argjson h "$UTC_HOUR" \
             '[.[] | select(
                ( (((( ((.digest_hour // 7) | tonumber) - ((.timezone_offset // "0") | tonumber) ) | round) % 24 + 24) % 24) as $t
-               | $t == $h or $t == $p )
+               | $t <= $h )
              )] | length')
 
-          echo "Users due at UTC ${PREV_HOUR}:00–${UTC_HOUR}:59 → ${COUNT}"
+          echo "Users due by UTC ${UTC_HOUR}:59 → ${COUNT}"
           echo "users_due=${COUNT}" >> "$GITHUB_OUTPUT"
 
 # ── Job 2: full pipeline — only runs when users are actually due ──────────────
