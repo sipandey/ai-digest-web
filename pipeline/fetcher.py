@@ -9,6 +9,7 @@ import arxiv
 from config import supabase
 from pipeline_config import (
     ARXIV_CATEGORIES,
+    ARXIV_CATEGORIES_EXTRA,
     MAX_RESULTS_PER_CATEGORY,
     MAX_AUTHORS_DISPLAYED,
     ARXIV_CLIENT_PAGE_SIZE,
@@ -240,4 +241,125 @@ def fetch_papers(run_date: str) -> list[dict]:
         ).execute()
         log.info("Cached %d papers for %s", len(papers), run_date)
 
+    return papers
+
+
+def fetch_extra_papers(
+    run_date: str,
+    categories: list[str],
+    known_ids: set[str],
+) -> list[dict]:
+    """Fetch papers from *categories* that are not already in *known_ids*.
+
+    Unlike fetch_papers() this function:
+    - Never reads from or writes to papers_cache — results are personal and
+      must not pollute the shared cache used by all other users.
+    - Accepts an explicit *known_ids* set so cross-category duplicates and
+      papers already in the shared pool are both skipped.
+    - Uses the same client settings, keyword filter, and publication-window
+      logic as fetch_papers() for consistent behaviour.
+
+    Intended to be called in pipeline.py only when processing the owner's
+    user_id (MY_USER_ID env var), never during batch runs.
+    """
+    if not categories:
+        return []
+
+    run_day = date.fromisoformat(run_date)
+    window_days = _window_days(run_day)
+    log.info(
+        "Extra fetch: %d categories for %s",
+        len(categories),
+        run_date,
+    )
+
+    client = arxiv.Client(
+        page_size=ARXIV_CLIENT_PAGE_SIZE,
+        delay_seconds=ARXIV_CLIENT_DELAY_SECONDS,
+        num_retries=ARXIV_CLIENT_NUM_RETRIES,
+    )
+
+    papers: list[dict] = []
+    seen_ids: set[str] = set(known_ids)  # copy — do not mutate the caller's set
+    group_counts: dict[str, int] = {}
+
+    for category in categories:
+        search = arxiv.Search(
+            query=f"cat:{category}",
+            max_results=MAX_RESULTS_PER_CATEGORY,
+            sort_by=arxiv.SortCriterion.SubmittedDate,
+            sort_order=arxiv.SortOrder.Descending,
+        )
+
+        results = _fetch_results(client, search, category)
+        if results:
+            newest = max(result.published.date() for result in results)
+            oldest = min(result.published.date() for result in results)
+            effective_cutoff = newest - timedelta(days=window_days - 1)
+            recent = [r for r in results if r.published.date() >= effective_cutoff]
+            log.info(
+                "%s (extra): fetched %d results spanning %s to %s; "
+                "effective cutoff=%s; %d within window",
+                category,
+                len(results),
+                newest.isoformat(),
+                oldest.isoformat(),
+                effective_cutoff.isoformat(),
+                len(recent),
+            )
+        else:
+            log.info("%s (extra): fetched 0 results", category)
+            recent = []
+
+        matched_in_category = 0
+
+        for result in recent:
+            arxiv_id = _arxiv_id(result)
+            if arxiv_id in seen_ids:
+                continue
+
+            matched_group = _matched_group(result)
+            if not matched_group:
+                continue
+
+            seen_ids.add(arxiv_id)
+            papers.append(
+                {
+                    "arxiv_id": arxiv_id,
+                    "fetch_date": run_date,
+                    "title": result.title,
+                    "authors": ", ".join(
+                        a.name for a in result.authors[:MAX_AUTHORS_DISPLAYED]
+                    ),
+                    "abstract": result.summary.replace("\n", " "),
+                    "pdf_url": result.pdf_url,
+                    "published_date": result.published.date().isoformat(),
+                    "category": result.primary_category,
+                    "matched_group": matched_group,
+                    "raw_json": {
+                        "entry_id": result.entry_id,
+                        "categories": result.categories,
+                    },
+                }
+            )
+            group_counts[matched_group] = group_counts.get(matched_group, 0) + 1
+            matched_in_category += 1
+
+        log.info("%s (extra): %d papers passed keyword filter", category, matched_in_category)
+
+        if category != categories[-1] and ARXIV_INTER_CATEGORY_DELAY_SECONDS > 0:
+            log.info(
+                "Sleeping %gs before next extra category to respect arXiv rate limit",
+                ARXIV_INTER_CATEGORY_DELAY_SECONDS,
+            )
+            time.sleep(ARXIV_INTER_CATEGORY_DELAY_SECONDS)
+
+    for group_name, count in group_counts.items():
+        log.info("Extra group '%s': %d papers", group_name, count)
+
+    log.info(
+        "Extra fetch complete: %d new papers from %d categories",
+        len(papers),
+        len(categories),
+    )
     return papers

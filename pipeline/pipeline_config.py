@@ -18,6 +18,17 @@ Edit this file to change:
 # Full list: https://arxiv.org/category_taxonomy
 ARXIV_CATEGORIES: list[str] = ["cs.LG", "cs.CL", "cs.IR", "cs.AI", "cs.CV"]
 
+# Extra categories fetched only for the user identified by MY_USER_ID in .env.
+# All other users get only ARXIV_CATEGORIES above.
+ARXIV_CATEGORIES_EXTRA: list[str] = [
+    "cs.HC",    # Human-Computer Interaction
+    "cs.CY",    # Computers and Society
+    "cs.ET",    # Emerging Technologies
+    "econ.GN",  # General Economics
+    "q-fin.GN", # General Finance
+    "q-bio.QM", # Health Informatics
+]
+
 # Maximum papers to pull per category per day.
 #
 # IMPORTANT: keep this at or below ARXIV_CLIENT_PAGE_SIZE (100).
@@ -143,6 +154,66 @@ KEYWORD_GROUPS: list[tuple[str, list[str]]] = [
             "interpretability",
             "explainability",
             "robustness",
+        ],
+    ),
+    (
+        "Human-computer interaction",
+        [
+            "user interface",
+            "ux",
+            "usability",
+            "accessibility",
+            "human-computer interaction",
+            "hci",
+            "user study",
+            "cognitive load",
+            "interface design",
+            "user experience",
+        ],
+    ),
+    (
+        "Health informatics",
+        [
+            "health informatics",
+            "clinical nlp",
+            "electronic health record",
+            "medical imaging",
+            "patient outcome",
+            "clinical decision",
+            "drug discovery",
+            "biomedical",
+            "genomics",
+            "wearable health",
+        ],
+    ),
+    (
+        "Economics and fintech",
+        [
+            "algorithmic trading",
+            "credit risk",
+            "fraud detection",
+            "financial forecasting",
+            "market microstructure",
+            "robo-advisor",
+            "payment",
+            "lending",
+            "economic inequality",
+            "fiscal policy",
+        ],
+    ),
+    (
+        "Society, privacy, and law",
+        [
+            "privacy",
+            "fairness",
+            "bias",
+            "misinformation",
+            "disinformation",
+            "surveillance",
+            "regulation",
+            "gdpr",
+            "content moderation",
+            "digital rights",
         ],
     ),
 ]

@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import supabase, get_active_users  # noqa: E402 — must follow load_dotenv
-from fetcher import fetch_papers
+from fetcher import fetch_extra_papers, fetch_papers
+from pipeline_config import ARXIV_CATEGORIES_EXTRA
 from ranker import rank_papers
 from notion_client import deliver_to_notion
 
@@ -305,6 +306,37 @@ def main() -> None:
         "Papers fetched",
         extra={"run_date": run_date, "papers_fetched": len(papers)},
     )
+
+    # ── Extra categories (owner-only, never cached) ───────────────────────────
+    # Fetch additional arXiv categories only when the pipeline is running
+    # specifically for MY_USER_ID (i.e. target_user_id is set and matches).
+    # Skipped entirely on batch runs (target_user_id not set) so no other user
+    # incurs extra fetch time or sees extra papers in their pool.
+    # A failure here is non-fatal — processing continues with the base pool.
+    my_user_id = os.environ.get("MY_USER_ID", "").strip()
+    if target_user_id and my_user_id and target_user_id == my_user_id:
+        try:
+            extra_papers = fetch_extra_papers(
+                run_date,
+                ARXIV_CATEGORIES_EXTRA,
+                {p["arxiv_id"] for p in papers},
+            )
+        except Exception as exc:
+            log.warning(
+                "Extra category fetch failed — proceeding with base pool only",
+                extra={"run_date": run_date, "error": str(exc)},
+            )
+            extra_papers = []
+        if extra_papers:
+            papers = papers + extra_papers
+            log.info(
+                "Extra papers merged",
+                extra={
+                    "run_date": run_date,
+                    "extra_count": len(extra_papers),
+                    "total_papers": len(papers),
+                },
+            )
 
     # ── Load active users then apply per-user delivery-time filter ────────────
     try:
