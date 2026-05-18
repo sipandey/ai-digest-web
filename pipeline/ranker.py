@@ -52,6 +52,13 @@ from pipeline_config import (
     SCORE_PROMPT_TEMPLATE,
     SUMMARY_SYSTEM_MESSAGE,
     SUMMARY_PROMPT_TEMPLATE,
+    # owner-only overrides (opportunity-scouting lens)
+    SCORING_CRITERIA_OWNER,
+    ACTIVE_CRITERIA_OWNER,
+    PROMPT_VERSION_OWNER,
+    SUMMARY_FIELD_WORD_LIMITS_OWNER,
+    SCORE_PROMPT_TEMPLATE_OWNER,
+    SUMMARY_PROMPT_TEMPLATE_OWNER,
 )
 
 log = logging.getLogger(__name__)
@@ -84,7 +91,9 @@ def _truncate_words(text: str, max_words: int) -> str:
     return " ".join(words[:max_words])
 
 
-def _active_criteria(user_config: dict) -> list[str]:
+def _active_criteria(user_config: dict, owner_mode: bool = False) -> list[str]:
+    if owner_mode:
+        return list(ACTIVE_CRITERIA_OWNER)
     priorities = user_config.get("scoring_priorities") or {}
     # scoring_priorities may arrive as a JSON string if the column type is text.
     if isinstance(priorities, str):
@@ -141,7 +150,7 @@ def _user_context(user_config: dict) -> tuple[str, str, str]:
     return profile, level_desc, topics_str
 
 
-def _profile_hash(user_config: dict) -> str:
+def _profile_hash(user_config: dict, owner_mode: bool = False) -> str:
     normalized = {
         "profile_description": (user_config.get("profile_description") or "").strip(),
         "experience_level": user_config.get("experience_level", "developer_learning_ai"),
@@ -152,6 +161,12 @@ def _profile_hash(user_config: dict) -> str:
         "prompt_version": PROMPT_VERSION,
         "score_threshold": SCORE_THRESHOLD,
     }
+    if owner_mode:
+        # Separate cache namespace for owner prompts — ensures owner scores/
+        # summaries never collide with the standard-prompt cache entries that
+        # would exist if the same user ran in non-owner mode.
+        normalized["owner_mode"] = True
+        normalized["prompt_version_owner"] = PROMPT_VERSION_OWNER
     serialized = json.dumps(
         normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )
@@ -345,17 +360,21 @@ def _format_papers_for_summary(papers: list[dict]) -> str:
     return lines
 
 
-def _build_score_prompt(papers: list[dict], user_config: dict) -> str:
+def _build_score_prompt(
+    papers: list[dict], user_config: dict, owner_mode: bool = False
+) -> str:
     profile, level_desc, topics_str = _user_context(user_config)
-    active = _active_criteria(user_config)
+    active = _active_criteria(user_config, owner_mode=owner_mode)
+    criteria_dict = SCORING_CRITERIA_OWNER if owner_mode else SCORING_CRITERIA
+    template = SCORE_PROMPT_TEMPLATE_OWNER if owner_mode else SCORE_PROMPT_TEMPLATE
 
     rubric_lines = "\n".join(
-        f"- {key}: {SCORING_CRITERIA[key].format(topics=topics_str, level_desc=level_desc)}"
+        f"- {key}: {criteria_dict[key].format(topics=topics_str, level_desc=level_desc)}"
         for key in active
-        if key in SCORING_CRITERIA
+        if key in criteria_dict
     )
 
-    return SCORE_PROMPT_TEMPLATE.format(
+    return template.format(
         profile=profile,
         level_desc=level_desc,
         topics_str=topics_str,
@@ -366,11 +385,14 @@ def _build_score_prompt(papers: list[dict], user_config: dict) -> str:
     )
 
 
-def _build_summary_prompt(papers: list[dict], user_config: dict) -> str:
+def _build_summary_prompt(
+    papers: list[dict], user_config: dict, owner_mode: bool = False
+) -> str:
     profile, level_desc, topics_str = _user_context(user_config)
-    lim = SUMMARY_FIELD_WORD_LIMITS
+    lim = SUMMARY_FIELD_WORD_LIMITS_OWNER if owner_mode else SUMMARY_FIELD_WORD_LIMITS
+    template = SUMMARY_PROMPT_TEMPLATE_OWNER if owner_mode else SUMMARY_PROMPT_TEMPLATE
 
-    return SUMMARY_PROMPT_TEMPLATE.format(
+    return template.format(
         profile=profile,
         level_desc=level_desc,
         topics_str=topics_str,
@@ -565,7 +587,8 @@ def _submit_and_poll_batch(
 
 
 def _score_batches_batch_api(
-    papers: list[dict], user_config: dict, client: OpenAI, label: str
+    papers: list[dict], user_config: dict, client: OpenAI, label: str,
+    owner_mode: bool = False,
 ) -> tuple[dict[str, dict], int]:
     """Batch-API scoring. Returns (score_map, n_requests_submitted)."""
     if not papers:
@@ -586,7 +609,7 @@ def _score_batches_batch_api(
                 "model": SCORE_MODEL,
                 "messages": [
                     {"role": "system", "content": SCORE_SYSTEM_MESSAGE},
-                    {"role": "user", "content": _build_score_prompt(batch, user_config)},
+                    {"role": "user", "content": _build_score_prompt(batch, user_config, owner_mode=owner_mode)},
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": SCORE_TEMPERATURE,
@@ -614,7 +637,8 @@ def _score_batches_batch_api(
 
 
 def _summarize_batches_batch_api(
-    papers: list[dict], user_config: dict, client: OpenAI, label: str
+    papers: list[dict], user_config: dict, client: OpenAI, label: str,
+    owner_mode: bool = False,
 ) -> tuple[dict[str, dict], int]:
     """Batch-API summarisation. Returns (summary_map, n_requests_submitted)."""
     if not papers:
@@ -635,7 +659,7 @@ def _summarize_batches_batch_api(
                 "model": SUMMARY_MODEL,
                 "messages": [
                     {"role": "system", "content": SUMMARY_SYSTEM_MESSAGE},
-                    {"role": "user", "content": _build_summary_prompt(batch, user_config)},
+                    {"role": "user", "content": _build_summary_prompt(batch, user_config, owner_mode=owner_mode)},
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": SUMMARY_TEMPERATURE,
@@ -666,7 +690,7 @@ def _summarize_batches_batch_api(
 
 
 def _score_batches(
-    papers: list[dict], user_config: dict, client: OpenAI
+    papers: list[dict], user_config: dict, client: OpenAI, owner_mode: bool = False,
 ) -> tuple[dict[str, dict], int]:
     """Synchronous scoring. Returns (score_map, llm_call_count)."""
     scored: dict[str, dict] = {}
@@ -684,7 +708,7 @@ def _score_batches(
                 model=SCORE_MODEL,
                 messages=[
                     {"role": "system", "content": SCORE_SYSTEM_MESSAGE},
-                    {"role": "user", "content": _build_score_prompt(batch, user_config)},
+                    {"role": "user", "content": _build_score_prompt(batch, user_config, owner_mode=owner_mode)},
                 ],
                 temperature=SCORE_TEMPERATURE,
             )
@@ -706,7 +730,7 @@ def _score_batches(
 
 
 def _summarize_batches(
-    papers: list[dict], user_config: dict, client: OpenAI
+    papers: list[dict], user_config: dict, client: OpenAI, owner_mode: bool = False,
 ) -> tuple[dict[str, dict], int]:
     """Synchronous summarisation. Returns (summary_map, llm_call_count)."""
     summaries: dict[str, dict] = {}
@@ -724,7 +748,7 @@ def _summarize_batches(
                 model=SUMMARY_MODEL,
                 messages=[
                     {"role": "system", "content": SUMMARY_SYSTEM_MESSAGE},
-                    {"role": "user", "content": _build_summary_prompt(batch, user_config)},
+                    {"role": "user", "content": _build_summary_prompt(batch, user_config, owner_mode=owner_mode)},
                 ],
                 temperature=SUMMARY_TEMPERATURE,
             )
@@ -755,6 +779,7 @@ def rank_papers(
     papers: list[dict],
     user_config: dict,
     use_batch: bool = False,
+    owner_mode: bool = False,
 ) -> list[dict]:
     """Score *papers* for *user_config* using GPT-4o-mini.
 
@@ -768,6 +793,11 @@ def rank_papers(
     (50% cost, ~minutes latency). Use for scheduled runs.
     When use_batch=False the calls are synchronous. Use for on-demand runs.
 
+    When owner_mode=True the opportunity-scouting rubric and prompt templates
+    are used instead of the default developer/ML-practitioner ones.  The cache
+    key is automatically separated so owner scores never collide with standard
+    scores for the same user and paper.
+
     Results are cached per user, fetch date, and profile hash.
     """
     if not papers:
@@ -776,7 +806,7 @@ def rank_papers(
     n_total = len(papers)
     user_id = user_config.get("user_id")
     fetch_date = papers[0].get("fetch_date")
-    profile_hash = _profile_hash(user_config)
+    profile_hash = _profile_hash(user_config, owner_mode=owner_mode)
     client = OpenAI(
         api_key=os.environ["OPENAI_API_KEY"],
         max_retries=OPENAI_MAX_RETRIES,
@@ -844,7 +874,7 @@ def rank_papers(
     if use_batch:
         try:
             score_map, n_score_calls = _score_batches_batch_api(
-                papers_to_score, user_config, client, batch_label
+                papers_to_score, user_config, client, batch_label, owner_mode=owner_mode
             )
         except (TimeoutError, RuntimeError) as batch_exc:
             # Batch API timed out or failed (e.g. OpenAI queue backlog).
@@ -852,9 +882,13 @@ def rank_papers(
             log.warning(
                 "Batch scoring failed (%s) — falling back to synchronous API", batch_exc
             )
-            score_map, n_score_calls = _score_batches(papers_to_score, user_config, client)
+            score_map, n_score_calls = _score_batches(
+                papers_to_score, user_config, client, owner_mode=owner_mode
+            )
     else:
-        score_map, n_score_calls = _score_batches(papers_to_score, user_config, client)
+        score_map, n_score_calls = _score_batches(
+            papers_to_score, user_config, client, owner_mode=owner_mode
+        )
 
     newly_passing = 0
     for paper in papers_to_score:
@@ -889,17 +923,19 @@ def rank_papers(
     if use_batch:
         try:
             summaries, n_summary_calls = _summarize_batches_batch_api(
-                papers_to_summarize, user_config, client, batch_label
+                papers_to_summarize, user_config, client, batch_label, owner_mode=owner_mode
             )
         except (TimeoutError, RuntimeError) as batch_exc:
             log.warning(
                 "Batch summarisation failed (%s) — falling back to synchronous API", batch_exc
             )
             summaries, n_summary_calls = _summarize_batches(
-                papers_to_summarize, user_config, client
+                papers_to_summarize, user_config, client, owner_mode=owner_mode
             )
     else:
-        summaries, n_summary_calls = _summarize_batches(papers_to_summarize, user_config, client)
+        summaries, n_summary_calls = _summarize_batches(
+            papers_to_summarize, user_config, client, owner_mode=owner_mode
+        )
 
     for paper in papers_to_summarize:
         summary = summaries.get(_arxiv_id(paper)) or _fallback_summary(paper)

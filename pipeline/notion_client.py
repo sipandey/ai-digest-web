@@ -72,7 +72,9 @@ def _link_paragraph(label: str, url: str) -> dict:
 # ── paper → blocks ─────────────────────────────────────────────────────────────
 
 
-def _paper_blocks(paper: dict, index: int, total: int) -> list[dict]:
+def _paper_blocks(
+    paper: dict, index: int, total: int, owner_mode: bool = False
+) -> list[dict]:
     score = paper.get("score", "—")
     title = paper.get("title", "Untitled")
     blocks: list[dict] = []
@@ -87,13 +89,28 @@ def _paper_blocks(paper: dict, index: int, total: int) -> list[dict]:
     ]
     blocks.append(_paragraph("  ·  ".join(p for p in meta_parts if p)))
 
-    for emoji, key, label in [
-        ("🔍", "problem", "Problem"),
-        ("⚙️", "approach", "Approach"),
-        ("📊", "results", "Results"),
-        ("🏗️", "builder_takeaway", "Builder Takeaway"),
-        ("📚", "learning_path", "Before Reading"),
-    ]:
+    # Owner mode uses opportunity-scouting labels; standard mode uses
+    # developer/ML-practitioner labels.  The underlying DB field names
+    # (builder_takeaway, learning_path) are the same in both cases — only
+    # the Notion display text differs.
+    if owner_mode:
+        field_labels = [
+            ("🔍", "problem", "Problem"),
+            ("⚙️", "approach", "Approach"),
+            ("📊", "results", "Evidence"),
+            ("🎯", "builder_takeaway", "Product Opportunity"),
+            ("💡", "learning_path", "Market Signal"),
+        ]
+    else:
+        field_labels = [
+            ("🔍", "problem", "Problem"),
+            ("⚙️", "approach", "Approach"),
+            ("📊", "results", "Results"),
+            ("🏗️", "builder_takeaway", "Builder Takeaway"),
+            ("📚", "learning_path", "Before Reading"),
+        ]
+
+    for emoji, key, label in field_labels:
         if paper.get(key):
             blocks.append(_toggle(f"{emoji} {label}", paper[key]))
 
@@ -206,6 +223,7 @@ def deliver_to_notion(
     papers: list[dict],
     user_config: dict,
     run_date: str,
+    owner_mode: bool = False,
 ) -> str:
     """Upsert a digest page in the user's Notion database. Return page URL.
 
@@ -229,7 +247,7 @@ def deliver_to_notion(
         _divider(),
     ]
     for i, paper in enumerate(papers):
-        all_blocks.extend(_paper_blocks(paper, i, len(papers)))
+        all_blocks.extend(_paper_blocks(paper, i, len(papers), owner_mode=owner_mode))
 
     # Check for an existing page for this date
     existing = _find_page_for_date(database_id, run_date, headers)

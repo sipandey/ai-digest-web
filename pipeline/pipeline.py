@@ -314,7 +314,11 @@ def main() -> None:
     # incurs extra fetch time or sees extra papers in their pool.
     # A failure here is non-fatal — processing continues with the base pool.
     my_user_id = os.environ.get("MY_USER_ID", "").strip()
-    if target_user_id and my_user_id and target_user_id == my_user_id:
+    # owner_mode activates the opportunity-scouting prompts and Notion labels
+    # for the pipeline owner. True only when a single-user run targets MY_USER_ID.
+    # Always False for batch runs so no other user is ever affected.
+    owner_mode = bool(target_user_id and my_user_id and target_user_id == my_user_id)
+    if owner_mode:
         try:
             extra_papers = fetch_extra_papers(
                 run_date,
@@ -423,7 +427,7 @@ def main() -> None:
                 )
 
             # Per-user scoring (only fresh papers)
-            scored = rank_papers(fresh_papers, user_config, use_batch=use_batch)
+            scored = rank_papers(fresh_papers, user_config, use_batch=use_batch, owner_mode=owner_mode)
             log.info(
                 "Scoring complete",
                 extra={
@@ -451,7 +455,7 @@ def main() -> None:
                 continue
 
             # Per-user Notion delivery
-            notion_url = deliver_to_notion(scored, user_config, run_date)
+            notion_url = deliver_to_notion(scored, user_config, run_date, owner_mode=owner_mode)
             top_score = float(scored[0].get("score", 0)) if scored else None
 
             # Record delivered papers so they are excluded from future digests
