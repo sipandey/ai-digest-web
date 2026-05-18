@@ -19,7 +19,46 @@ Edit this file to change:
 ARXIV_CATEGORIES: list[str] = ["cs.LG", "cs.CL", "cs.IR", "cs.AI", "cs.CV"]
 
 # Extra categories fetched only for the user identified by MY_USER_ID in .env.
-# All other users get only ARXIV_CATEGORIES above.
+# All other users subscribed to AI Digest get only ARXIV_CATEGORIES above —
+# they signed up for an AI/ML research digest, not a broader problem survey.
+#
+# Why these six categories exist
+# ────────────────────────────────
+# The core categories (cs.LG, cs.CL, cs.AI, cs.CV, cs.IR) surface strong
+# technical AI/ML research, but skew toward developer and researcher problems:
+# better benchmarks, faster training, cleaner architectures.  That is useful
+# signal, but it systematically under-represents the domains where non-technical
+# end users feel pain and where consumer willingness-to-pay is highest.
+#
+# This digest feeds a downstream intelligence pipeline that identifies real-world
+# product opportunities — not "what is the state of the art in LLM fine-tuning"
+# but "what problem are patients / SMB owners / retail borrowers unable to solve
+# today that an AI-native product could solve cheaply."  For that purpose the
+# paper pool needs breadth across human domains, not just depth in ML.
+#
+# Category-by-category rationale:
+#   cs.HC  — Researchers literally study where users struggle with software.
+#            HCI papers are empirical: they measure confusion, error rates, and
+#            dropout.  Each finding is a product gap someone will pay to close.
+#   cs.CY  — Surfaces privacy, accessibility, and regulatory gaps that affect
+#            everyday people.  GDPR compliance, algorithmic bias, and digital
+#            equity are areas where tooling is immature and demand is growing.
+#   cs.ET  — EdTech, climate tech, civic tech: real-world deployment of
+#            technology in domains with mission-driven buyers.  Problems here
+#            are often under-served because the user base is not developers.
+#   econ.GN — Macro and behavioural economics: problems people pay advisors,
+#            accountants, and consultants to solve.  AI-native tools can
+#            democratise access to that advice at a fraction of the cost.
+#   q-fin.GN — Fintech gaps: personal finance, lending, credit scoring,
+#            insurance underwriting.  High willingness-to-pay, regulated,
+#            and historically slow to adopt software — ripe for disruption.
+#   q-bio.QM — Clinical and patient-facing problems: understanding discharge
+#            notes, interpreting lab results, medication adherence.  Among
+#            the highest willingness-to-pay of any consumer vertical.
+#
+# These categories are skipped entirely during the shared batch run that covers
+# all users (target_user_id not set), so no other user incurs extra fetch time
+# or sees papers outside the AI/ML scope they signed up for.
 ARXIV_CATEGORIES_EXTRA: list[str] = [
     "cs.HC",    # Human-Computer Interaction
     "cs.CY",    # Computers and Society
