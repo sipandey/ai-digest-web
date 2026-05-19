@@ -307,40 +307,7 @@ def main() -> None:
         extra={"run_date": run_date, "papers_fetched": len(papers)},
     )
 
-    # ── Extra categories (owner-only, never cached) ───────────────────────────
-    # Fetch additional arXiv categories only when the pipeline is running
-    # specifically for MY_USER_ID (i.e. target_user_id is set and matches).
-    # Skipped entirely on batch runs (target_user_id not set) so no other user
-    # incurs extra fetch time or sees extra papers in their pool.
-    # A failure here is non-fatal — processing continues with the base pool.
     my_user_id = os.environ.get("MY_USER_ID", "").strip()
-    # owner_mode activates the opportunity-scouting prompts and Notion labels
-    # for the pipeline owner. True only when a single-user run targets MY_USER_ID.
-    # Always False for batch runs so no other user is ever affected.
-    owner_mode = bool(target_user_id and my_user_id and target_user_id == my_user_id)
-    if owner_mode:
-        try:
-            extra_papers = fetch_extra_papers(
-                run_date,
-                ARXIV_CATEGORIES_EXTRA,
-                {p["arxiv_id"] for p in papers},
-            )
-        except Exception as exc:
-            log.warning(
-                "Extra category fetch failed — proceeding with base pool only",
-                extra={"run_date": run_date, "error": str(exc)},
-            )
-            extra_papers = []
-        if extra_papers:
-            papers = papers + extra_papers
-            log.info(
-                "Extra papers merged",
-                extra={
-                    "run_date": run_date,
-                    "extra_count": len(extra_papers),
-                    "total_papers": len(papers),
-                },
-            )
 
     # ── Load active users then apply per-user delivery-time filter ────────────
     try:
@@ -375,6 +342,45 @@ def main() -> None:
         )
         return
 
+    # ── Extra categories (owner-only, never cached) ───────────────────────────
+    # Fetch extra arXiv categories and merge into the shared paper pool when the
+    # owner (MY_USER_ID) is among the users being processed in this run — whether
+    # that is a scheduled batch run or a single-user manual trigger.
+    #
+    # Placed here (after time filtering) so we only pay the ~90-second extra
+    # fetch cost on runs where the owner is actually due. Other users are never
+    # affected: their paper pool still comes from the shared fetch above.
+    #
+    # owner_mode (per-user, set inside the loop below) activates the
+    # opportunity-scouting prompts and Notion labels for the owner's own digest.
+    # It is False for every other user in the same batch run.
+    owner_in_run = bool(
+        my_user_id and any(u.get("user_id") == my_user_id for u in users)
+    )
+    if owner_in_run:
+        try:
+            extra_papers = fetch_extra_papers(
+                run_date,
+                ARXIV_CATEGORIES_EXTRA,
+                {p["arxiv_id"] for p in papers},
+            )
+        except Exception as exc:
+            log.warning(
+                "Extra category fetch failed — proceeding with base pool only",
+                extra={"run_date": run_date, "error": str(exc)},
+            )
+            extra_papers = []
+        if extra_papers:
+            papers = papers + extra_papers
+            log.info(
+                "Extra papers merged",
+                extra={
+                    "run_date": run_date,
+                    "extra_count": len(extra_papers),
+                    "total_papers": len(papers),
+                },
+            )
+
     succeeded = 0
     failed = 0
 
@@ -382,6 +388,9 @@ def main() -> None:
         user_id: str = user_config["user_id"]
         email: str = user_config.get("users", {}).get("email", user_id)
         run_id: str = ""  # populated inside try; kept in scope for the except handler
+        # True only for the owner — activates opportunity-scouting prompts and
+        # Notion labels. False for every other user in the same run.
+        owner_mode = bool(my_user_id and user_id == my_user_id)
 
         try:
             # Guard: skip if already successfully delivered today.
