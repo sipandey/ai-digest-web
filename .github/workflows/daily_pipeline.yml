@@ -194,4 +194,7 @@ jobs:
           # same value — avoids skipping users when job startup (checkout + pip)
           # pushes execution into the next clock hour.
           PIPELINE_UTC_HOUR: ${{ needs.check.outputs.utc_hour }}
+          # Owner-only features (extra arXiv categories + opportunity-scouting
+          # prompts). Set MY_USER_ID as a GitHub Actions secret to activate.
+          MY_USER_ID: ${{ secrets.MY_USER_ID }}
         run: python pipeline.py
