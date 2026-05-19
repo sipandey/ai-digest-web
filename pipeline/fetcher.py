@@ -291,7 +291,19 @@ def fetch_extra_papers(
             sort_order=arxiv.SortOrder.Descending,
         )
 
-        results = _fetch_results(client, search, category)
+        try:
+            results = _fetch_results(client, search, category)
+        except arxiv.HTTPError as exc:
+            # A persistent 429 after all application-level retries: skip this
+            # category and continue. Other extra categories still run — one
+            # bad category doesn't kill the whole extra fetch.
+            log.warning(
+                "%s (extra): skipped after persistent 429 — %s",
+                category,
+                exc,
+            )
+            continue
+
         if results:
             newest = max(result.published.date() for result in results)
             oldest = min(result.published.date() for result in results)
