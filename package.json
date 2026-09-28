@@ -12,7 +12,11 @@
     "eval": "create-agent-room eval",
     "doctor": "create-agent-room doctor .",
     "verify": "create-agent-room verify .",
-    "sync": "create-agent-room sync --all"
+    "sync": "create-agent-room sync --all",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:test": "./scripts/docker-test.sh"
   },
   "devDependencies": {
     "create-agent-room": "2.6.0"

@@ -1,0 +1,36 @@
+services:
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: aidigest-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    env_file:
+      - .env
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - aidigest-network
+
+  pipeline:
+    build:
+      context: ./pipeline
+      dockerfile: Dockerfile
+    container_name: aidigest-pipeline
+    env_file:
+      - .env
+    volumes:
+      - ./pipeline:/app
+    networks:
+      - aidigest-network
+
+networks:
+  aidigest-network:
+    driver: bridge

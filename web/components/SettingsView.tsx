@@ -277,9 +277,9 @@ export default function SettingsView() {
         setShowReconnect(false);
         setNotionToken("");
         setConnectionStatus("idle");
-        showToast("Notion workspace connected", "success");
       } else {
         showToast("Save failed — please try again.", "error");
+      }
     } catch {
       showToast("Network error — please try again.", "error");
     } finally {
