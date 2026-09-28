@@ -1,6 +1,8 @@
 ---
 title: "Integrate create-agent-room v2.6.0 Governance Framework"
 date: "2026-09-28"
+research_doc: "docs/research/2026-09-28-create-agent-room-integration.md"
+branch: "feature/integrate-agent-room"
 status: "completed"
 phases_total: 3
 phases_completed: 3
