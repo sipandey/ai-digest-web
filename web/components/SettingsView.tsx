@@ -24,6 +24,10 @@ type Config = {
   timezone_offset: number;
   notion_connected: boolean;
   notion_database_id: string | null;
+  email_digest_enabled?: boolean;
+  delivery_email?: string | null;
+  webhook_url?: string | null;
+  webhook_platform?: "slack" | "discord" | "generic";
 };
 
 type UserProfile = {
@@ -147,6 +151,12 @@ export default function SettingsView() {
   const [timezoneOffset, setTimezoneOffset] = useState(0);
   const [savingDelivery, setSavingDelivery] = useState(false);
 
+  const [emailDigestEnabled, setEmailDigestEnabled] = useState(false);
+  const [deliveryEmail, setDeliveryEmail] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookPlatform, setWebhookPlatform] = useState<"slack" | "discord" | "generic">("slack");
+  const [savingChannels, setSavingChannels] = useState(false);
+
   const [showReconnect, setShowReconnect] = useState(false);
   const [notionToken, setNotionToken] = useState("");
   const [notionDatabaseId, setNotionDatabaseId] = useState("");
@@ -173,6 +183,10 @@ export default function SettingsView() {
         // Number() coercion guards against Supabase returning NUMERIC columns
         // as JSON strings (e.g. "5.50" instead of 5.5) during any migration window.
         setTimezoneOffset(Number(cfg.timezone_offset ?? 0));
+        setEmailDigestEnabled(Boolean(cfg.email_digest_enabled));
+        setDeliveryEmail(cfg.delivery_email ?? prof?.email ?? "");
+        setWebhookUrl(cfg.webhook_url ?? "");
+        setWebhookPlatform(cfg.webhook_platform ?? "slack");
       } finally {
         setLoading(false);
       }
@@ -266,9 +280,43 @@ export default function SettingsView() {
         showToast("Notion workspace connected", "success");
       } else {
         showToast("Save failed — please try again.", "error");
+    } catch {
+      showToast("Network error — please try again.", "error");
+    } finally {
+      setSavingNotion(false);
+    }
+  }
+
+  async function saveChannels() {
+    setSavingChannels(true);
+    try {
+      const ok = await patchConfig({
+        email_digest_enabled: emailDigestEnabled,
+        delivery_email: deliveryEmail,
+        webhook_url: webhookUrl,
+        webhook_platform: webhookPlatform,
+      });
+      if (ok) {
+        setConfig((c) =>
+          c
+            ? {
+                ...c,
+                email_digest_enabled: emailDigestEnabled,
+                delivery_email: deliveryEmail,
+                webhook_url: webhookUrl,
+                webhook_platform: webhookPlatform,
+              }
+            : c
+        );
+        showToast("Channels saved", "success");
+      } else {
+        showToast("Save failed — please check fields.", "error");
       }
-    } catch { showToast("Network error — please try again.", "error"); }
-    finally { setSavingNotion(false); }
+    } catch {
+      showToast("Network error — please try again.", "error");
+    } finally {
+      setSavingChannels(false);
+    }
   }
 
   async function handleSignOut() {
@@ -508,6 +556,90 @@ export default function SettingsView() {
 
             <div className="pt-1">
               <SaveButton loading={savingDelivery} onClick={saveDelivery} label="Save delivery settings" />
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* ── CHANNELS & INTEGRATIONS ────────────────────────────────────── */}
+        <SectionCard heading="Channels & Integrations">
+          <div className="space-y-6">
+            {/* HTML Email Digest */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#14141e]">Daily Email Digest</h3>
+                  <p className="text-xs text-gray-400">Receive morning research briefing in your inbox</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEmailDigestEnabled(!emailDigestEnabled)}
+                  className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                    emailDigestEnabled ? "bg-indigo-600" : "bg-gray-300"
+                  }`}
+                >
+                  <div
+                    className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                      emailDigestEnabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {emailDigestEnabled && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Delivery Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={deliveryEmail}
+                    onChange={(e) => setDeliveryEmail(e.target.value)}
+                    placeholder="you@domain.com"
+                    className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-sm text-[#14141e] focus:outline-none transition-colors"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-gray-100 pt-5 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[#14141e]">Team Chat Webhook</h3>
+                <p className="text-xs text-gray-400">Publish daily digest to Slack or Discord channels</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {(["slack", "discord", "generic"] as const).map((plat) => (
+                  <button
+                    key={plat}
+                    type="button"
+                    onClick={() => setWebhookPlatform(plat)}
+                    className={`py-2 px-3 rounded-xl border text-xs font-medium capitalize transition-colors ${
+                      webhookPlatform === plat
+                        ? "border-indigo-600 bg-indigo-50 text-indigo-700 font-semibold"
+                        : "border-gray-200 text-gray-600 hover:border-gray-300"
+                    }`}
+                  >
+                    {plat}
+                  </button>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                  Incoming Webhook URL
+                </label>
+                <input
+                  type="url"
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/..."
+                  className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-sm font-mono text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <SaveButton loading={savingChannels} onClick={saveChannels} label="Save channel preferences" />
             </div>
           </div>
         </SectionCard>

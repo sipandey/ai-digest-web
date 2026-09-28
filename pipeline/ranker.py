@@ -864,6 +864,7 @@ def rank_papers(
     use_batch: bool = False,
     owner_mode: bool = False,
     lens: Optional[str] = None,
+    user_feedback: Optional[dict] = None,
 ) -> list[dict]:
     """Score *papers* for *user_config* using GPT-4o-mini.
 
@@ -1058,5 +1059,16 @@ def rank_papers(
         n_total,
     )
 
+    if user_feedback:
+        more_cats = set(user_feedback.get("more_categories") or [])
+        less_cats = set(user_feedback.get("less_categories") or [])
+        for p in scored:
+            cat = p.get("category")
+            if cat in more_cats:
+                p["score"] = min(10.0, round(float(p.get("score", 0)) + 0.6, 1))
+            elif cat in less_cats:
+                p["score"] = max(1.0, round(float(p.get("score", 0)) - 0.8, 1))
+
     scored.sort(key=lambda paper: float(paper.get("score", 0)), reverse=True)
     return scored
+

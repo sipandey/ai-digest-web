@@ -294,7 +294,31 @@ def _fail_pending_runs(run_date: str, target_user_id: Optional[str], error: str)
         log.error("Failed to mark runs as failed: %s", cleanup_exc)
 
 
+def _load_user_feedback(user_id: str) -> dict:
+    """Load user's positive and negative paper feedback for personalization."""
+    try:
+        res = (
+            supabase.table("paper_feedback")
+            .select("rating, paper_categories")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        more_cats: set[str] = set()
+        less_cats: set[str] = set()
+        for row in res.data or []:
+            cats = row.get("paper_categories") or []
+            if row.get("rating") == "more":
+                more_cats.update(cats)
+            elif row.get("rating") == "less":
+                less_cats.update(cats)
+        return {"more_categories": list(more_cats), "less_categories": list(less_cats)}
+    except Exception as exc:
+        log.warning("Could not load user feedback for user %s: %s", user_id, exc)
+        return {"more_categories": [], "less_categories": []}
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     run_date = os.environ.get("PIPELINE_RUN_DATE") or date.today().isoformat()
@@ -471,9 +495,15 @@ def main() -> None:
                     },
                 )
 
-            # Per-user scoring (only fresh papers)
+            # Per-user scoring (only fresh papers, refined by user feedback)
+            user_feedback = _load_user_feedback(user_id)
             scored = rank_papers(
-                fresh_papers, user_config, use_batch=use_batch, owner_mode=owner_mode, lens=lens
+                fresh_papers,
+                user_config,
+                use_batch=use_batch,
+                owner_mode=owner_mode,
+                lens=lens,
+                user_feedback=user_feedback,
             )
             log.info(
                 "Scoring complete",

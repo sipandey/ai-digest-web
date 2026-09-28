@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import PaperCard, { Paper } from "./PaperCard";
 
@@ -80,11 +80,65 @@ export function DigestReader({
 }) {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, "more" | "less">>({});
 
   const today = todayISO();
   const papers = digest?.papers ?? [];
   const lens = digest?.lens ?? "builder";
   const activeLensLabel = LENS_LABELS[lens] ?? "🛠️ Builder Lens";
+
+  // Fetch user feedback ratings on load
+  useEffect(() => {
+    async function loadFeedback() {
+      try {
+        const res = await fetch("/api/users/feedback");
+        if (res.ok) {
+          const data = await res.json();
+          setFeedbackMap(data.feedback ?? {});
+        }
+      } catch {
+        // silently ignore
+      }
+    }
+    loadFeedback();
+  }, []);
+
+  async function handleRate(arxivId: string, rating: "more" | "less") {
+    const current = feedbackMap[arxivId];
+    if (current === rating) {
+      // Toggle off / reset
+      setFeedbackMap((prev) => {
+        const next = { ...prev };
+        delete next[arxivId];
+        return next;
+      });
+      try {
+        await fetch(`/api/users/feedback?arxiv_id=${encodeURIComponent(arxivId)}`, {
+          method: "DELETE",
+        });
+      } catch {
+        // silently ignore
+      }
+    } else {
+      // Set new rating
+      setFeedbackMap((prev) => ({ ...prev, [arxivId]: rating }));
+      const paper = papers.find((p) => p.arxiv_id === arxivId);
+      try {
+        await fetch("/api/users/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            arxiv_id: arxivId,
+            rating,
+            paper_title: paper?.title,
+            paper_categories: paper?.category ? [paper.category] : [],
+          }),
+        });
+      } catch {
+        // silently ignore
+      }
+    }
+  }
 
   // Extract unique categories from papers
   const categories = useMemo(() => {
@@ -260,6 +314,8 @@ export function DigestReader({
                   paper={paper}
                   lens={lens}
                   rank={idx + 1}
+                  currentRating={paper.arxiv_id ? feedbackMap[paper.arxiv_id] : null}
+                  onRate={handleRate}
                 />
               ))}
             </div>

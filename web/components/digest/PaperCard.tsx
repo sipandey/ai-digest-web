@@ -24,10 +24,14 @@ export function PaperCard({
   paper,
   lens,
   rank,
+  currentRating,
+  onRate,
 }: {
   paper: Paper;
   lens: string;
   rank: number;
+  currentRating?: "more" | "less" | null;
+  onRate?: (arxivId: string, rating: "more" | "less") => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const score = Math.round(paper.score * 10) / 10;
@@ -141,14 +145,48 @@ export function PaperCard({
         )}
       </div>
 
-      {/* Expandable Breakdown Toggle */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="text-xs font-semibold text-gray-500 hover:text-indigo-600 transition-colors flex items-center gap-1.5"
-      >
-        <span>{expanded ? "Hide details" : "Technical breakdown & abstract"}</span>
-        <span className="text-[10px]">{expanded ? "▲" : "▼"}</span>
-      </button>
+      {/* Action Row: Expand Toggle & Feedback Tuning Buttons */}
+      <div className="flex items-center justify-between pt-2.5 border-t border-gray-100">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-xs font-semibold text-gray-500 hover:text-indigo-600 transition-colors flex items-center gap-1.5"
+        >
+          <span>{expanded ? "Hide details" : "Technical breakdown & abstract"}</span>
+          <span className="text-[10px]">{expanded ? "▲" : "▼"}</span>
+        </button>
+
+        {onRate && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-gray-400 mr-1 hidden sm:inline">Tune:</span>
+            <button
+              type="button"
+              onClick={() => onRate(paper.arxiv_id, "more")}
+              title="More like this (improves future suggestions)"
+              className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 ${
+                currentRating === "more"
+                  ? "bg-emerald-100 text-emerald-800 font-semibold ring-1 ring-emerald-300"
+                  : "bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200"
+              }`}
+            >
+              <span>👍</span>
+              <span>More</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onRate(paper.arxiv_id, "less")}
+              title="Less like this (reduces similar papers)"
+              className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 ${
+                currentRating === "less"
+                  ? "bg-rose-100 text-rose-800 font-semibold ring-1 ring-rose-300"
+                  : "bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200"
+              }`}
+            >
+              <span>👎</span>
+              <span>Less</span>
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Expanded Sections */}
       {expanded && (
