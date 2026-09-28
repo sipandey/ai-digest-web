@@ -11,6 +11,7 @@ type UserConfig = {
   notion_connected: boolean;
   topics: string[];
   experience_level: string;
+  digest_lens?: string;
   digest_hour: number;
   timezone_offset: number;
 };
@@ -507,6 +508,12 @@ const EXPERIENCE_LABELS: Record<string, string> = {
   ml_engineer: "ML Engineer",
 };
 
+const LENS_LABELS: Record<string, string> = {
+  builder: "🛠️ Builder",
+  founder: "💡 Founder",
+  researcher: "🔬 Researcher",
+};
+
 function ConfigSummary({ config }: { config: UserConfig }) {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5">
@@ -521,6 +528,13 @@ function ConfigSummary({ config }: { config: UserConfig }) {
       </div>
 
       <div className="space-y-3.5">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-400">Lens</p>
+          <p className="text-xs font-medium text-gray-700">
+            {config.digest_lens ? (LENS_LABELS[config.digest_lens] ?? config.digest_lens) : "🛠️ Builder"}
+          </p>
+        </div>
+
         <div>
           <p className="text-xs text-gray-400 mb-2">Topics</p>
           <div className="flex flex-wrap gap-1.5">

@@ -3,9 +3,9 @@ title: "SPM System Recovery and Unified Architecture Roadmap"
 date: "2026-09-28"
 research_doc: "docs/research/2026-09-28-spm-system-audit-and-unified-architecture.md"
 branch: "feature/spm-audit-roadmap"
-status: "planned"
+status: "in-progress"
 phases_total: 4
-phases_completed: 0
+phases_completed: 2
 ---
 
 # SPM System Recovery and Unified Architecture Roadmap
@@ -49,10 +49,10 @@ Work is organized into four sequential phases: Bring-Up, Pipeline Unification, W
 Restore database infrastructure, apply required schema migrations, synchronize secrets across environments, and bring the local development server online.
 
 ### Tasks:
-- [ ] Unpause or provision Supabase instance and verify DNS resolution.
-- [ ] Apply pending SQL migrations (`guest_sessions.sql`, `anon_scheduling_read.sql`, `cleanup_guest_sessions_cron.sql`).
-- [ ] Update environment variables in `.env`, `web/.env.local`, Vercel, and GitHub Secrets.
-- [ ] Verify test suite and local web server startup.
+- [x] Unpause or provision Supabase instance and verify DNS resolution.
+- [x] Apply pending SQL migrations (`guest_sessions.sql`, `anon_scheduling_read.sql`, `cleanup_guest_sessions_cron.sql`).
+- [x] Update environment variables in `.env`, `web/.env.local`, Vercel, and GitHub Secrets.
+- [x] Verify test suite and local web server startup.
 
 #### Automated Verification:
 `npm test`
@@ -65,11 +65,11 @@ Restore database infrastructure, apply required schema migrations, synchronize s
 Eliminate hardcoded `MY_USER_ID` checks and transform opportunity-scouting prompts and extra arXiv categories into user-configurable settings.
 
 ### Tasks:
-- [ ] Add `digest_lens` enum (`founder`, `builder`, `researcher`) to `user_configs` in Supabase schema.
-- [ ] Refactor `pipeline/pipeline.py` to remove `MY_USER_ID` and apply lenses based on each user's stored preference.
-- [ ] Refactor `pipeline/fetcher.py` and `pipeline/pipeline_config.py` to allow any user to select economics, finance, and statistics arXiv categories.
-- [ ] Update `pipeline/notion_client.py` to format Notion blocks dynamically according to the user's active lens.
-- [ ] Update Pytest unit tests in `pipeline/tests/` to validate multi-lens scoring.
+- [x] Add `digest_lens` enum (`founder`, `builder`, `researcher`) to `user_configs` in Supabase schema.
+- [x] Refactor `pipeline/pipeline.py` to remove `MY_USER_ID` and apply lenses based on each user's stored preference.
+- [x] Refactor `pipeline/fetcher.py` and `pipeline/pipeline_config.py` to allow any user to select economics, finance, and statistics arXiv categories.
+- [x] Update `pipeline/notion_client.py` to format Notion blocks dynamically according to the user's active lens.
+- [x] Update Pytest unit tests in `pipeline/tests/` to validate multi-lens scoring.
 
 #### Automated Verification:
 `npm run test:pipeline`

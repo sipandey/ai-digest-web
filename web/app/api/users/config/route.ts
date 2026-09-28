@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
       experienceLevel,
       digestHour,
       timezoneOffset,
+      digestLens,
     } = body;
 
     // ── Input validation ─────────────────────────────────────────────────────
@@ -140,6 +141,9 @@ export async function POST(req: NextRequest) {
 
     if (typeof profileDescription === "string" && profileDescription.length > 500) {
       postErrors.push("profile_description must be 500 characters or fewer");
+    }
+    if (typeof digestLens === "string" && !["builder", "founder", "researcher"].includes(digestLens)) {
+      postErrors.push("digest_lens must be one of: builder, founder, researcher");
     }
     if (Array.isArray(topics)) {
       if (topics.length > 5) postErrors.push("topics must have 5 items or fewer");
@@ -180,6 +184,9 @@ export async function POST(req: NextRequest) {
       topics,
       profile_description: profileDescription,
       experience_level: experienceLevel,
+      ...(typeof digestLens === "string" && ["builder", "founder", "researcher"].includes(digestLens)
+        ? { digest_lens: digestLens }
+        : {}),
       ...(typeof digestHour === "number" ? { digest_hour: digestHour } : {}),
       ...(typeof timezoneOffset === "number" ? { timezone_offset: timezoneOffset } : {}),
     });
@@ -216,6 +223,7 @@ export async function PATCH(req: NextRequest) {
       digestHour: "digest_hour",
       timezoneOffset: "timezone_offset",
       scoringPriorities: "scoring_priorities",
+      digestLens: "digest_lens",
       // `active` is intentionally excluded — account activation/deactivation
       // must only be performed by an admin, never by the user themselves.
       notion_token: "notion_token",
@@ -226,6 +234,7 @@ export async function PATCH(req: NextRequest) {
       digest_hour: "digest_hour",
       timezone_offset: "timezone_offset",
       scoring_priorities: "scoring_priorities",
+      digest_lens: "digest_lens",
     };
 
     const updates: Record<string, unknown> = {};
@@ -289,6 +298,15 @@ export async function PATCH(req: NextRequest) {
           validationErrors.push("timezone_offset must be between -12 and 14");
         } else {
           updates["timezone_offset"] = n; // normalise to number
+        }
+      }
+    }
+
+    if ("digest_lens" in updates) {
+      const v = updates["digest_lens"];
+      if (v !== null && v !== undefined) {
+        if (typeof v !== "string" || !["builder", "founder", "researcher"].includes(v)) {
+          validationErrors.push("digest_lens must be one of: builder, founder, researcher");
         }
       }
     }

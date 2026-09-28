@@ -12,7 +12,14 @@ load_dotenv()
 
 from config import supabase, get_active_users  # noqa: E402 — must follow load_dotenv
 from fetcher import fetch_extra_papers, fetch_papers
-from pipeline_config import ARXIV_CATEGORIES_EXTRA
+from pipeline_config import (
+    ARXIV_CATEGORIES_EXTRA,
+    ARXIV_CATEGORIES_RESEARCHER,
+    LENS_BUILDER,
+    LENS_FOUNDER,
+    LENS_RESEARCHER,
+    VALID_LENSES,
+)
 from ranker import rank_papers
 from notion_client import deliver_to_notion
 
@@ -342,26 +349,25 @@ def main() -> None:
         )
         return
 
-    # ── Extra categories (owner-only, never cached) ───────────────────────────
-    # Fetch extra arXiv categories and merge into the shared paper pool when the
-    # owner (MY_USER_ID) is among the users being processed in this run — whether
-    # that is a scheduled batch run or a single-user manual trigger.
-    #
-    # Placed here (after time filtering) so we only pay the ~90-second extra
-    # fetch cost on runs where the owner is actually due. Other users are never
-    # affected: their paper pool still comes from the shared fetch above.
-    #
-    # owner_mode (per-user, set inside the loop below) activates the
-    # opportunity-scouting prompts and Notion labels for the owner's own digest.
-    # It is False for every other user in the same batch run.
-    owner_in_run = bool(
-        my_user_id and any(u.get("user_id") == my_user_id for u in users)
-    )
-    if owner_in_run:
+    # ── Extra categories (lens-aware, never cached) ───────────────────────────
+    # Fetch extra arXiv categories and merge into the shared paper pool when
+    # users with founder or researcher lenses are due in this run.
+    active_lenses = {
+        u.get("digest_lens")
+        or (LENS_FOUNDER if (my_user_id and u.get("user_id") == my_user_id) else LENS_BUILDER)
+        for u in users
+    }
+    categories_to_fetch = set()
+    if LENS_FOUNDER in active_lenses:
+        categories_to_fetch.update(ARXIV_CATEGORIES_EXTRA)
+    if LENS_RESEARCHER in active_lenses:
+        categories_to_fetch.update(ARXIV_CATEGORIES_RESEARCHER)
+
+    if categories_to_fetch:
         try:
             extra_papers = fetch_extra_papers(
                 run_date,
-                ARXIV_CATEGORIES_EXTRA,
+                sorted(categories_to_fetch),
                 {p["arxiv_id"] for p in papers},
             )
         except Exception as exc:
@@ -388,9 +394,13 @@ def main() -> None:
         user_id: str = user_config["user_id"]
         email: str = user_config.get("users", {}).get("email", user_id)
         run_id: str = ""  # populated inside try; kept in scope for the except handler
-        # True only for the owner — activates opportunity-scouting prompts and
-        # Notion labels. False for every other user in the same run.
-        owner_mode = bool(my_user_id and user_id == my_user_id)
+
+        # Determine user lens (founder, builder, researcher) with backward-compatible fallback
+        lens = (
+            user_config.get("digest_lens")
+            or (LENS_FOUNDER if (my_user_id and user_id == my_user_id) else LENS_BUILDER)
+        )
+        owner_mode = (lens == LENS_FOUNDER)
 
         try:
             # Guard: skip if already successfully delivered today.
@@ -436,7 +446,9 @@ def main() -> None:
                 )
 
             # Per-user scoring (only fresh papers)
-            scored = rank_papers(fresh_papers, user_config, use_batch=use_batch, owner_mode=owner_mode)
+            scored = rank_papers(
+                fresh_papers, user_config, use_batch=use_batch, owner_mode=owner_mode, lens=lens
+            )
             log.info(
                 "Scoring complete",
                 extra={
@@ -464,7 +476,9 @@ def main() -> None:
                 continue
 
             # Per-user Notion delivery
-            notion_url = deliver_to_notion(scored, user_config, run_date, owner_mode=owner_mode)
+            notion_url = deliver_to_notion(
+                scored, user_config, run_date, owner_mode=owner_mode, lens=lens
+            )
             top_score = float(scored[0].get("score", 0)) if scored else None
 
             # Record delivered papers so they are excluded from future digests

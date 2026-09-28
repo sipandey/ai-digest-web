@@ -5,6 +5,13 @@ from typing import Optional
 
 import requests
 
+from pipeline_config import (
+    LENS_BUILDER,
+    LENS_FOUNDER,
+    LENS_NOTION_LABELS,
+    VALID_LENSES,
+)
+
 log = logging.getLogger(__name__)
 
 NOTION_API = "https://api.notion.com/v1"
@@ -73,7 +80,11 @@ def _link_paragraph(label: str, url: str) -> dict:
 
 
 def _paper_blocks(
-    paper: dict, index: int, total: int, owner_mode: bool = False
+    paper: dict,
+    index: int,
+    total: int,
+    owner_mode: bool = False,
+    lens: Optional[str] = None,
 ) -> list[dict]:
     score = paper.get("score", "—")
     title = paper.get("title", "Untitled")
@@ -89,26 +100,12 @@ def _paper_blocks(
     ]
     blocks.append(_paragraph("  ·  ".join(p for p in meta_parts if p)))
 
-    # Owner mode uses opportunity-scouting labels; standard mode uses
-    # developer/ML-practitioner labels.  The underlying DB field names
-    # (builder_takeaway, learning_path) are the same in both cases — only
-    # the Notion display text differs.
-    if owner_mode:
-        field_labels = [
-            ("🔍", "problem", "Problem"),
-            ("⚙️", "approach", "Approach"),
-            ("📊", "results", "Evidence"),
-            ("🎯", "builder_takeaway", "Product Opportunity"),
-            ("💡", "learning_path", "Market Signal"),
-        ]
-    else:
-        field_labels = [
-            ("🔍", "problem", "Problem"),
-            ("⚙️", "approach", "Approach"),
-            ("📊", "results", "Results"),
-            ("🏗️", "builder_takeaway", "Builder Takeaway"),
-            ("📚", "learning_path", "Before Reading"),
-        ]
+    # Resolve active lens for Notion toggle labels
+    active_lens = (
+        lens if (lens and lens in VALID_LENSES)
+        else (LENS_FOUNDER if owner_mode else LENS_BUILDER)
+    )
+    field_labels = LENS_NOTION_LABELS.get(active_lens, LENS_NOTION_LABELS[LENS_BUILDER])
 
     for emoji, key, label in field_labels:
         if paper.get(key):
@@ -224,6 +221,7 @@ def deliver_to_notion(
     user_config: dict,
     run_date: str,
     owner_mode: bool = False,
+    lens: Optional[str] = None,
 ) -> str:
     """Upsert a digest page in the user's Notion database. Return page URL.
 
@@ -240,6 +238,11 @@ def deliver_to_notion(
         "Content-Type": "application/json",
     }
 
+    active_lens = (
+        lens if (lens and lens in VALID_LENSES)
+        else (user_config.get("digest_lens") or (LENS_FOUNDER if owner_mode else LENS_BUILDER))
+    )
+
     # Build full block list
     all_blocks: list[dict] = [
         _heading(1, f"AI Digest — {run_date}"),
@@ -247,7 +250,7 @@ def deliver_to_notion(
         _divider(),
     ]
     for i, paper in enumerate(papers):
-        all_blocks.extend(_paper_blocks(paper, i, len(papers), owner_mode=owner_mode))
+        all_blocks.extend(_paper_blocks(paper, i, len(papers), owner_mode=owner_mode, lens=active_lens))
 
     # Check for an existing page for this date
     existing = _find_page_for_date(database_id, run_date, headers)

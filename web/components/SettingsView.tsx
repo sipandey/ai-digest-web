@@ -13,9 +13,12 @@ type ExperienceLevel =
   | "practitioner"
   | "ml_engineer";
 
+export type DigestLens = "builder" | "founder" | "researcher";
+
 type Config = {
   profile_description: string;
   experience_level: ExperienceLevel;
+  digest_lens?: DigestLens;
   topics: string[];
   digest_hour: number;
   timezone_offset: number;
@@ -34,6 +37,12 @@ type Toast = { message: string; type: "success" | "error" };
 type ConnectionStatus = "idle" | "testing" | "success" | "error";
 
 // ── constants ─────────────────────────────────────────────────────────────────
+
+const DIGEST_LENSES: { value: DigestLens; label: string; sub: string; icon: string }[] = [
+  { value: "builder", label: "Builder", sub: "Practical code, architectures & implementation takeaways", icon: "🛠️" },
+  { value: "founder", label: "Founder", sub: "Market signals, consumer pain points & product opportunities", icon: "💡" },
+  { value: "researcher", label: "Researcher", sub: "Deep-tech, theoretical novelty, mathematical rigor & claims", icon: "🔬" },
+];
 
 const EXPERIENCE_LEVELS: { value: ExperienceLevel; label: string; sub: string }[] = [
   { value: "beginner", label: "Complete beginner", sub: "Just starting with AI" },
@@ -128,6 +137,7 @@ export default function SettingsView() {
 
   const [profileDesc, setProfileDesc] = useState("");
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>("developer_learning_ai");
+  const [digestLens, setDigestLens] = useState<DigestLens>("builder");
   const [topics, setTopics] = useState<string[]>([]);
   const [topicInput, setTopicInput] = useState("");
   const [topicError, setTopicError] = useState("");
@@ -157,6 +167,7 @@ export default function SettingsView() {
         setUserProfile(prof);
         setProfileDesc(cfg.profile_description ?? "");
         setExperienceLevel(cfg.experience_level ?? "developer_learning_ai");
+        setDigestLens((cfg.digest_lens as DigestLens) ?? "builder");
         setTopics(cfg.topics ?? []);
         setDigestHour(cfg.digest_hour ?? 7);
         // Number() coercion guards against Supabase returning NUMERIC columns
@@ -201,7 +212,12 @@ export default function SettingsView() {
   async function saveProfile() {
     setSavingProfile(true);
     try {
-      const ok = await patchConfig({ profile_description: profileDesc, experience_level: experienceLevel, topics });
+      const ok = await patchConfig({
+        profile_description: profileDesc,
+        experience_level: experienceLevel,
+        digest_lens: digestLens,
+        topics,
+      });
       showToast(ok ? "Profile saved" : "Save failed — please try again.", ok ? "success" : "error");
     } catch { showToast("Network error — please try again.", "error"); }
     finally { setSavingProfile(false); }
@@ -316,6 +332,41 @@ export default function SettingsView() {
                 placeholder="e.g. I'm building a customer support chatbot using RAG. I have web dev experience and I'm learning AI."
                 className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none resize-none transition-colors"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                Digest Lens
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                How papers are scored and summarized for your daily workflow.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {DIGEST_LENSES.map(({ value, label, sub, icon }) => (
+                  <label
+                    key={value}
+                    className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                      digestLens === value
+                        ? "border-indigo-600 bg-indigo-50/60 shadow-xs ring-1 ring-indigo-500/20"
+                        : "border-gray-200 hover:border-gray-300 bg-gray-50/40"
+                    }`}
+                  >
+                    <span className="text-xl shrink-0 mt-0.5" role="img" aria-label={label}>{icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[#14141e]">{label}</p>
+                      <p className="text-xs text-gray-500 leading-snug mt-0.5">{sub}</p>
+                    </div>
+                    <input
+                      type="radio"
+                      name="digestLens"
+                      value={value}
+                      checked={digestLens === value}
+                      onChange={() => setDigestLens(value)}
+                      className="sr-only"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
 
             <div>
