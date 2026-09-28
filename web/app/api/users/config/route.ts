@@ -229,6 +229,10 @@ export async function PATCH(req: NextRequest) {
       timezoneOffset: "timezone_offset",
       scoringPriorities: "scoring_priorities",
       digestLens: "digest_lens",
+      emailDigestEnabled: "email_digest_enabled",
+      deliveryEmail: "delivery_email",
+      webhookUrl: "webhook_url",
+      webhookPlatform: "webhook_platform",
       // `active` is intentionally excluded — account activation/deactivation
       // must only be performed by an admin, never by the user themselves.
       notion_token: "notion_token",
@@ -240,6 +244,10 @@ export async function PATCH(req: NextRequest) {
       timezone_offset: "timezone_offset",
       scoring_priorities: "scoring_priorities",
       digest_lens: "digest_lens",
+      email_digest_enabled: "email_digest_enabled",
+      delivery_email: "delivery_email",
+      webhook_url: "webhook_url",
+      webhook_platform: "webhook_platform",
     };
 
     const updates: Record<string, unknown> = {};
@@ -312,6 +320,40 @@ export async function PATCH(req: NextRequest) {
       if (v !== null && v !== undefined) {
         if (typeof v !== "string" || !["builder", "founder", "researcher"].includes(v)) {
           validationErrors.push("digest_lens must be one of: builder, founder, researcher");
+        }
+      }
+    }
+
+    if ("email_digest_enabled" in updates) {
+      const v = updates["email_digest_enabled"];
+      if (typeof v !== "boolean") {
+        updates["email_digest_enabled"] = Boolean(v);
+      }
+    }
+
+    if ("delivery_email" in updates) {
+      const v = updates["delivery_email"];
+      if (v !== null && v !== "") {
+        if (typeof v !== "string" || !v.includes("@")) {
+          validationErrors.push("delivery_email must be a valid email address");
+        }
+      }
+    }
+
+    if ("webhook_url" in updates) {
+      const v = updates["webhook_url"];
+      if (v !== null && v !== "") {
+        if (typeof v !== "string" || (!v.startsWith("http://") && !v.startsWith("https://"))) {
+          validationErrors.push("webhook_url must be a valid HTTP or HTTPS URL");
+        }
+      }
+    }
+
+    if ("webhook_platform" in updates) {
+      const v = updates["webhook_platform"];
+      if (v !== null && v !== undefined) {
+        if (typeof v !== "string" || !["slack", "discord", "generic"].includes(v)) {
+          validationErrors.push("webhook_platform must be one of: slack, discord, generic");
         }
       }
     }

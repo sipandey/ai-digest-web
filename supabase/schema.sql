@@ -69,6 +69,11 @@ CREATE TABLE IF NOT EXISTS user_configs (
                                   CHECK (digest_lens IN ('founder', 'builder', 'researcher')),
   timezone_offset     FLOAT8      NOT NULL DEFAULT 0,
   digest_hour         integer     NOT NULL DEFAULT 7,
+  email_digest_enabled boolean    NOT NULL DEFAULT false,
+  delivery_email      text,
+  webhook_url         text,
+  webhook_platform    text        NOT NULL DEFAULT 'slack'
+                                  CHECK (webhook_platform IN ('slack', 'discord', 'generic')),
   active              boolean     NOT NULL DEFAULT true,
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now()
@@ -328,6 +333,68 @@ CREATE POLICY digests_select_own ON digests
     )
   );
 
+-- =============================================================================
+-- TABLE: paper_feedback
+-- Users can rate papers ('more' like this or 'less' like this) to personalize
+-- their future digests.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS paper_feedback (
+  id               uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  arxiv_id         text        NOT NULL,
+  rating           text        NOT NULL CHECK (rating IN ('more', 'less')),
+  paper_title      text,
+  paper_categories text[],
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT paper_feedback_user_arxiv_unique UNIQUE (user_id, arxiv_id)
+);
+
+CREATE INDEX IF NOT EXISTS paper_feedback_user_id_idx ON paper_feedback (user_id);
+CREATE INDEX IF NOT EXISTS paper_feedback_arxiv_id_idx ON paper_feedback (arxiv_id);
+
+CREATE TRIGGER paper_feedback_set_updated_at
+  BEFORE UPDATE ON paper_feedback
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE paper_feedback ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS paper_feedback_select_own ON paper_feedback;
+CREATE POLICY paper_feedback_select_own ON paper_feedback
+  FOR SELECT USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
+DROP POLICY IF EXISTS paper_feedback_insert_own ON paper_feedback;
+CREATE POLICY paper_feedback_insert_own ON paper_feedback
+  FOR INSERT WITH CHECK (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
+DROP POLICY IF EXISTS paper_feedback_update_own ON paper_feedback;
+CREATE POLICY paper_feedback_update_own ON paper_feedback
+  FOR UPDATE USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  ) WITH CHECK (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
+DROP POLICY IF EXISTS paper_feedback_delete_own ON paper_feedback;
+CREATE POLICY paper_feedback_delete_own ON paper_feedback
+  FOR DELETE USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
 -- user_configs — minimal anon read for GitHub Actions scheduling check gate
 GRANT SELECT (digest_hour, timezone_offset)
   ON user_configs
@@ -339,3 +406,4 @@ CREATE POLICY user_configs_anon_scheduling_read
   FOR SELECT
   TO anon
   USING (active = true);
+
