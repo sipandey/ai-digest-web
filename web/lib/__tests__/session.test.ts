@@ -113,9 +113,8 @@ describe("verifySessionToken", () => {
   it("returns null for a token with a tampered signature", async () => {
     const { token } = await createSessionToken("user");
     const parts = token.split(".");
-    // Flip the last character of the signature segment
-    const last = parts[1];
-    parts[1] = last.slice(0, -1) + (last.endsWith("A") ? "B" : "A");
+    // Flip the first character of the signature segment to guarantee byte change
+    parts[1] = (parts[1][0] === "A" ? "B" : "A") + parts[1].slice(1);
     expect(await verifySessionToken(parts.join("."))).toBeNull();
   });
 
