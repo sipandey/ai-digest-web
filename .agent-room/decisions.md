@@ -16,6 +16,13 @@ have to re-derive it from scratch by reading git history.
 
 <!-- Entries go below this line, newest first. -->
 
+### 2026-09-28 — Unify dual-path architecture via Digest Lenses and Web Digest reader
+
+**Decision:** Adopted the Digest Lens framework (`founder`, `builder`, `researcher`) to generalize the hardcoded `owner_mode` across all users, and consolidated authentication onto Clerk with an in-app Web Digest reader, making Notion an optional export destination.
+**Why:** Eliminates the hardcoded `MY_USER_ID` pipeline split and removes onboarding friction where users were required to configure Notion integrations before seeing value.
+**Rejected:** Maintaining a dedicated admin/owner endpoint or keeping Notion as a mandatory prerequisite for all users.
+
+
 ### 2026-09-28 — Integrate create-agent-room v2.6.0 governance framework
 
 **Decision:** Integrated create-agent-room v2.6.0 with standard profile, multi-tool rule sync across Claude, Cursor, Copilot, Windsurf, Cline, Codex, and full Git lifecycle hooks. Configured combined verification command (`npm test --prefix web && pytest pipeline/tests/ -q`) covering both Next.js/Vitest and Python/pytest suites. Added root package.json pinning create-agent-room@2.6.0 with convenience scripts.
