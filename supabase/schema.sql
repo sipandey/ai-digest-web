@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS user_configs (
                                     "real_world_grounding": true,
                                     "novelty_timing": true
                                   }',
+  digest_lens         text        NOT NULL DEFAULT 'builder'
+                                  CHECK (digest_lens IN ('founder', 'builder', 'researcher')),
   timezone_offset     FLOAT8      NOT NULL DEFAULT 0,
   digest_hour         integer     NOT NULL DEFAULT 7,
   active              boolean     NOT NULL DEFAULT true,

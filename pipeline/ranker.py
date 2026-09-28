@@ -59,6 +59,23 @@ from pipeline_config import (
     SUMMARY_FIELD_WORD_LIMITS_OWNER,
     SCORE_PROMPT_TEMPLATE_OWNER,
     SUMMARY_PROMPT_TEMPLATE_OWNER,
+    # lens framework
+    LENS_BUILDER,
+    LENS_FOUNDER,
+    LENS_RESEARCHER,
+    VALID_LENSES,
+    SCORING_CRITERIA_FOUNDER,
+    ACTIVE_CRITERIA_FOUNDER,
+    PROMPT_VERSION_FOUNDER,
+    SUMMARY_FIELD_WORD_LIMITS_FOUNDER,
+    SCORE_PROMPT_TEMPLATE_FOUNDER,
+    SUMMARY_PROMPT_TEMPLATE_FOUNDER,
+    SCORING_CRITERIA_RESEARCHER,
+    ACTIVE_CRITERIA_RESEARCHER,
+    PROMPT_VERSION_RESEARCHER,
+    SUMMARY_FIELD_WORD_LIMITS_RESEARCHER,
+    SCORE_PROMPT_TEMPLATE_RESEARCHER,
+    SUMMARY_PROMPT_TEMPLATE_RESEARCHER,
 )
 
 log = logging.getLogger(__name__)
@@ -91,9 +108,37 @@ def _truncate_words(text: str, max_words: int) -> str:
     return " ".join(words[:max_words])
 
 
-def _active_criteria(user_config: dict, owner_mode: bool = False) -> list[str]:
+def _resolve_lens(
+    user_config: dict, owner_mode: bool = False, lens: Optional[str] = None
+) -> str:
+    """Resolve the active lens for scoring and summarization.
+
+    Precedence:
+    1. Explicit lens keyword argument (if valid)
+    2. user_config['digest_lens'] (if valid)
+    3. owner_mode fallback (maps to 'founder')
+    4. Default: 'builder'
+    """
+    if lens and lens in VALID_LENSES:
+        return lens
+    cfg = user_config or {}
+    cfg_lens = cfg.get("digest_lens")
+    if cfg_lens and cfg_lens in VALID_LENSES:
+        return cfg_lens
     if owner_mode:
-        return list(ACTIVE_CRITERIA_OWNER)
+        return LENS_FOUNDER
+    return LENS_BUILDER
+
+
+def _active_criteria(
+    user_config: dict, owner_mode: bool = False, lens: Optional[str] = None
+) -> list[str]:
+    active_lens = _resolve_lens(user_config, owner_mode=owner_mode, lens=lens)
+    if active_lens == LENS_FOUNDER:
+        return list(ACTIVE_CRITERIA_FOUNDER)
+    if active_lens == LENS_RESEARCHER:
+        return list(ACTIVE_CRITERIA_RESEARCHER)
+
     priorities = user_config.get("scoring_priorities") or {}
     # scoring_priorities may arrive as a JSON string if the column type is text.
     if isinstance(priorities, str):
@@ -115,7 +160,7 @@ def _sanitize_user_text(text: str) -> str:
 
     Prompts wrap user content in XML-style delimiters (<user_profile>,
     <user_topics>) to signal to the model that the enclosed text is data,
-    not instructions.  A crafted profile like '</user_profile>\\nIgnore above'
+    not instructions.  A crafted profile like '</user_profile>\nIgnore above'
     could break out of those delimiters, so we escape < and > with HTML
     entities before injection.  The model handles &lt;/&gt; correctly in
     context; legitimate uses of angle brackets in profiles are rare.
@@ -127,7 +172,7 @@ def _sanitize_paper_text(text: str) -> str:
     """Escape angle brackets in arXiv paper content (titles, abstracts, etc.).
 
     Paper text is embedded inside <paper> XML delimiters in the scoring and
-    summary prompts.  A crafted title like '</paper>\\nIgnore above\\n<paper>'
+    summary prompts.  A crafted title like '</paper>\nIgnore above\n<paper>'
     could break out of its container and inject instructions into the prompt.
     Escaping < and > with HTML entities prevents delimiter escape attacks.
 
@@ -150,7 +195,10 @@ def _user_context(user_config: dict) -> tuple[str, str, str]:
     return profile, level_desc, topics_str
 
 
-def _profile_hash(user_config: dict, owner_mode: bool = False) -> str:
+def _profile_hash(
+    user_config: dict, owner_mode: bool = False, lens: Optional[str] = None
+) -> str:
+    active_lens = _resolve_lens(user_config, owner_mode=owner_mode, lens=lens)
     normalized = {
         "profile_description": (user_config.get("profile_description") or "").strip(),
         "experience_level": user_config.get("experience_level", "developer_learning_ai"),
@@ -160,13 +208,16 @@ def _profile_hash(user_config: dict, owner_mode: bool = False) -> str:
         "summary_model": SUMMARY_MODEL,
         "prompt_version": PROMPT_VERSION,
         "score_threshold": SCORE_THRESHOLD,
+        "digest_lens": active_lens,
     }
-    if owner_mode:
-        # Separate cache namespace for owner prompts — ensures owner scores/
-        # summaries never collide with the standard-prompt cache entries that
-        # would exist if the same user ran in non-owner mode.
+    if active_lens == LENS_FOUNDER:
+        # Separate cache namespace for founder/owner prompts
         normalized["owner_mode"] = True
         normalized["prompt_version_owner"] = PROMPT_VERSION_OWNER
+        normalized["prompt_version_founder"] = PROMPT_VERSION_FOUNDER
+    elif active_lens == LENS_RESEARCHER:
+        normalized["prompt_version_researcher"] = PROMPT_VERSION_RESEARCHER
+
     serialized = json.dumps(
         normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )
@@ -361,12 +412,24 @@ def _format_papers_for_summary(papers: list[dict]) -> str:
 
 
 def _build_score_prompt(
-    papers: list[dict], user_config: dict, owner_mode: bool = False
+    papers: list[dict],
+    user_config: dict,
+    owner_mode: bool = False,
+    lens: Optional[str] = None,
 ) -> str:
+    active_lens = _resolve_lens(user_config, owner_mode=owner_mode, lens=lens)
     profile, level_desc, topics_str = _user_context(user_config)
-    active = _active_criteria(user_config, owner_mode=owner_mode)
-    criteria_dict = SCORING_CRITERIA_OWNER if owner_mode else SCORING_CRITERIA
-    template = SCORE_PROMPT_TEMPLATE_OWNER if owner_mode else SCORE_PROMPT_TEMPLATE
+    active = _active_criteria(user_config, owner_mode=owner_mode, lens=active_lens)
+
+    if active_lens == LENS_FOUNDER:
+        criteria_dict = SCORING_CRITERIA_FOUNDER
+        template = SCORE_PROMPT_TEMPLATE_FOUNDER
+    elif active_lens == LENS_RESEARCHER:
+        criteria_dict = SCORING_CRITERIA_RESEARCHER
+        template = SCORE_PROMPT_TEMPLATE_RESEARCHER
+    else:
+        criteria_dict = SCORING_CRITERIA
+        template = SCORE_PROMPT_TEMPLATE
 
     rubric_lines = "\n".join(
         f"- {key}: {criteria_dict[key].format(topics=topics_str, level_desc=level_desc)}"
@@ -386,11 +449,23 @@ def _build_score_prompt(
 
 
 def _build_summary_prompt(
-    papers: list[dict], user_config: dict, owner_mode: bool = False
+    papers: list[dict],
+    user_config: dict,
+    owner_mode: bool = False,
+    lens: Optional[str] = None,
 ) -> str:
+    active_lens = _resolve_lens(user_config, owner_mode=owner_mode, lens=lens)
     profile, level_desc, topics_str = _user_context(user_config)
-    lim = SUMMARY_FIELD_WORD_LIMITS_OWNER if owner_mode else SUMMARY_FIELD_WORD_LIMITS
-    template = SUMMARY_PROMPT_TEMPLATE_OWNER if owner_mode else SUMMARY_PROMPT_TEMPLATE
+
+    if active_lens == LENS_FOUNDER:
+        lim = SUMMARY_FIELD_WORD_LIMITS_FOUNDER
+        template = SUMMARY_PROMPT_TEMPLATE_FOUNDER
+    elif active_lens == LENS_RESEARCHER:
+        lim = SUMMARY_FIELD_WORD_LIMITS_RESEARCHER
+        template = SUMMARY_PROMPT_TEMPLATE_RESEARCHER
+    else:
+        lim = SUMMARY_FIELD_WORD_LIMITS
+        template = SUMMARY_PROMPT_TEMPLATE
 
     return template.format(
         profile=profile,
@@ -588,7 +663,7 @@ def _submit_and_poll_batch(
 
 def _score_batches_batch_api(
     papers: list[dict], user_config: dict, client: OpenAI, label: str,
-    owner_mode: bool = False,
+    owner_mode: bool = False, lens: Optional[str] = None,
 ) -> tuple[dict[str, dict], int]:
     """Batch-API scoring. Returns (score_map, n_requests_submitted)."""
     if not papers:
@@ -609,7 +684,7 @@ def _score_batches_batch_api(
                 "model": SCORE_MODEL,
                 "messages": [
                     {"role": "system", "content": SCORE_SYSTEM_MESSAGE},
-                    {"role": "user", "content": _build_score_prompt(batch, user_config, owner_mode=owner_mode)},
+                    {"role": "user", "content": _build_score_prompt(batch, user_config, owner_mode=owner_mode, lens=lens)},
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": SCORE_TEMPERATURE,
@@ -638,7 +713,7 @@ def _score_batches_batch_api(
 
 def _summarize_batches_batch_api(
     papers: list[dict], user_config: dict, client: OpenAI, label: str,
-    owner_mode: bool = False,
+    owner_mode: bool = False, lens: Optional[str] = None,
 ) -> tuple[dict[str, dict], int]:
     """Batch-API summarisation. Returns (summary_map, n_requests_submitted)."""
     if not papers:
@@ -659,7 +734,7 @@ def _summarize_batches_batch_api(
                 "model": SUMMARY_MODEL,
                 "messages": [
                     {"role": "system", "content": SUMMARY_SYSTEM_MESSAGE},
-                    {"role": "user", "content": _build_summary_prompt(batch, user_config, owner_mode=owner_mode)},
+                    {"role": "user", "content": _build_summary_prompt(batch, user_config, owner_mode=owner_mode, lens=lens)},
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": SUMMARY_TEMPERATURE,
@@ -690,7 +765,11 @@ def _summarize_batches_batch_api(
 
 
 def _score_batches(
-    papers: list[dict], user_config: dict, client: OpenAI, owner_mode: bool = False,
+    papers: list[dict],
+    user_config: dict,
+    client: OpenAI,
+    owner_mode: bool = False,
+    lens: Optional[str] = None,
 ) -> tuple[dict[str, dict], int]:
     """Synchronous scoring. Returns (score_map, llm_call_count)."""
     scored: dict[str, dict] = {}
@@ -708,7 +787,7 @@ def _score_batches(
                 model=SCORE_MODEL,
                 messages=[
                     {"role": "system", "content": SCORE_SYSTEM_MESSAGE},
-                    {"role": "user", "content": _build_score_prompt(batch, user_config, owner_mode=owner_mode)},
+                    {"role": "user", "content": _build_score_prompt(batch, user_config, owner_mode=owner_mode, lens=lens)},
                 ],
                 temperature=SCORE_TEMPERATURE,
             )
@@ -730,7 +809,11 @@ def _score_batches(
 
 
 def _summarize_batches(
-    papers: list[dict], user_config: dict, client: OpenAI, owner_mode: bool = False,
+    papers: list[dict],
+    user_config: dict,
+    client: OpenAI,
+    owner_mode: bool = False,
+    lens: Optional[str] = None,
 ) -> tuple[dict[str, dict], int]:
     """Synchronous summarisation. Returns (summary_map, llm_call_count)."""
     summaries: dict[str, dict] = {}
@@ -748,7 +831,7 @@ def _summarize_batches(
                 model=SUMMARY_MODEL,
                 messages=[
                     {"role": "system", "content": SUMMARY_SYSTEM_MESSAGE},
-                    {"role": "user", "content": _build_summary_prompt(batch, user_config, owner_mode=owner_mode)},
+                    {"role": "user", "content": _build_summary_prompt(batch, user_config, owner_mode=owner_mode, lens=lens)},
                 ],
                 temperature=SUMMARY_TEMPERATURE,
             )
@@ -780,6 +863,7 @@ def rank_papers(
     user_config: dict,
     use_batch: bool = False,
     owner_mode: bool = False,
+    lens: Optional[str] = None,
 ) -> list[dict]:
     """Score *papers* for *user_config* using GPT-4o-mini.
 
@@ -806,7 +890,8 @@ def rank_papers(
     n_total = len(papers)
     user_id = user_config.get("user_id")
     fetch_date = papers[0].get("fetch_date")
-    profile_hash = _profile_hash(user_config, owner_mode=owner_mode)
+    active_lens = _resolve_lens(user_config, owner_mode=owner_mode, lens=lens)
+    profile_hash = _profile_hash(user_config, owner_mode=owner_mode, lens=active_lens)
     client = OpenAI(
         api_key=os.environ["OPENAI_API_KEY"],
         max_retries=OPENAI_MAX_RETRIES,
@@ -874,7 +959,7 @@ def rank_papers(
     if use_batch:
         try:
             score_map, n_score_calls = _score_batches_batch_api(
-                papers_to_score, user_config, client, batch_label, owner_mode=owner_mode
+                papers_to_score, user_config, client, batch_label, owner_mode=owner_mode, lens=active_lens
             )
         except (TimeoutError, RuntimeError) as batch_exc:
             # Batch API timed out or failed (e.g. OpenAI queue backlog).
@@ -883,11 +968,11 @@ def rank_papers(
                 "Batch scoring failed (%s) — falling back to synchronous API", batch_exc
             )
             score_map, n_score_calls = _score_batches(
-                papers_to_score, user_config, client, owner_mode=owner_mode
+                papers_to_score, user_config, client, owner_mode=owner_mode, lens=active_lens
             )
     else:
         score_map, n_score_calls = _score_batches(
-            papers_to_score, user_config, client, owner_mode=owner_mode
+            papers_to_score, user_config, client, owner_mode=owner_mode, lens=active_lens
         )
 
     newly_passing = 0
@@ -923,18 +1008,18 @@ def rank_papers(
     if use_batch:
         try:
             summaries, n_summary_calls = _summarize_batches_batch_api(
-                papers_to_summarize, user_config, client, batch_label, owner_mode=owner_mode
+                papers_to_summarize, user_config, client, batch_label, owner_mode=owner_mode, lens=active_lens
             )
         except (TimeoutError, RuntimeError) as batch_exc:
             log.warning(
                 "Batch summarisation failed (%s) — falling back to synchronous API", batch_exc
             )
             summaries, n_summary_calls = _summarize_batches(
-                papers_to_summarize, user_config, client, owner_mode=owner_mode
+                papers_to_summarize, user_config, client, owner_mode=owner_mode, lens=active_lens
             )
     else:
         summaries, n_summary_calls = _summarize_batches(
-            papers_to_summarize, user_config, client, owner_mode=owner_mode
+            papers_to_summarize, user_config, client, owner_mode=owner_mode, lens=active_lens
         )
 
     for paper in papers_to_summarize:
