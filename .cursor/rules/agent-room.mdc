@@ -1,0 +1,28 @@
+---
+description: Agent-room governance — read AGENTS.md and .agent-room/ before non-trivial work
+alwaysApply: true
+---
+
+# Cursor rules — AIDigestWeb
+
+Read [`AGENTS.md`](../../AGENTS.md) and everything under
+[`.agent-room/`](../../.agent-room/) before making non-trivial changes:
+
+- `.agent-room/principles.md` — how to get reliable output from the model
+  (present when scaffolded with `--profile full`).
+- `.agent-room/workflow-classifier.md` — size the process to the work
+  (Bug / Enhancement / Feature / Product; `--profile full`).
+- `.agent-room/skills/` — closing-the-loop, commit-changes, database-migrations, describe-pr, implement-plan, integration-testing, iterate-plan, python-testing, research-codebase, security-principles, systematic-debugging, test-driven-development, typescript-testing, validate-plan, writing-plans. Follow these as procedures,
+  not suggestions.
+- **RPI Execution Pipeline** — For any non-trivial feature, enhancement, or multi-file refactor, you MUST strictly follow the 5-stage RPI sequence:
+  1. **Research** (`research-codebase`): Map architecture, call paths, and patterns read-only. Save findings to `docs/research/YYYY-MM-DD-<topic>.md`.
+  2. **Plan & Iterate** (`writing-plans`, `iterate-plan`): Ingest research, evaluate trade-offs, and draft a phased checklist with automated verification to `docs/plans/YYYY-MM-DD-<topic>.md`. Obtain human confirmation before modifying code.
+  3. **Implement** (`implement-plan`): Execute phase-by-phase using TDD, run verification commands, and update checkboxes (`- [ ]` -> `- [x]`) directly on disk.
+  4. **Audit** (`validate-plan`): Verify implementation matches plan specifications before completing the turn.
+  5. **Deliver** (`commit-changes`, `describe-pr`): Present atomic commits with imperative messages (no AI attribution) and generate PR summaries.
+  *Note:* Localized defects follow the lightweight Bug Flow (reproduce -> diagnose -> test -> fix), skipping full RPI documentation overhead.
+- `.agent-room/anti-patterns.md` and `.agent-room/decisions.md` — check
+  before repeating a past mistake; append after a new one or a notable
+  decision. The project Cursor `stop` hook forces a follow-up turn if you
+  change source files without touching one of these logs (or adding a
+  `<!-- no-log: ... -->` waiver).

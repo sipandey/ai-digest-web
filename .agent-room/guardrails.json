@@ -1,0 +1,48 @@
+{
+  "protectedPaths": [
+    "infrastructure/**",
+    "**/*.tfstate",
+    ".github/workflows/**",
+    ".agent-room/guardrails.json",
+    ".agent-room/guardrails.md",
+    ".agent-room/hooks/**",
+    ".claude/settings.json"
+  ],
+  "requireApprovalFor": [
+    "database migrations",
+    "dependency major version bumps",
+    "changes to CI/CD pipeline",
+    "changes to authentication or authorization logic"
+  ],
+  "scopeGuidance": {
+    "maxFilesPerChange": 20,
+    "maxLinesPerChange": 500
+  },
+  "forbiddenActions": [
+    {
+      "pattern": "AKIA[0-9A-Z]{16}",
+      "type": "regex",
+      "description": "AWS access key ID"
+    },
+    {
+      "pattern": "-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----",
+      "type": "regex",
+      "description": "Private key file contents"
+    },
+    {
+      "pattern": "api[_-]?key\\s*[:=]\\s*['\"][a-zA-Z0-9]{20,}",
+      "type": "regex",
+      "description": "Hardcoded API key assignment"
+    },
+    {
+      "pattern": "xox[baprs]-[0-9a-zA-Z-]{10,48}",
+      "type": "regex",
+      "description": "Slack API token"
+    },
+    {
+      "pattern": "gh[pousr]_[A-Za-z0-9]{36,}",
+      "type": "regex",
+      "description": "GitHub personal access / app token"
+    }
+  ]
+}

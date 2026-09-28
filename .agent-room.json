@@ -1,0 +1,25 @@
+{
+  "name": "AIDigestWeb",
+  "tools": [
+    "claude",
+    "cursor",
+    "windsurf",
+    "cline",
+    "codex",
+    "copilot",
+    "git"
+  ],
+  "language": "typescript",
+  "packageManager": "npm",
+  "defaultBranch": "main",
+  "skillPacks": [
+    "testing",
+    "security",
+    "database"
+  ],
+  "profile": "standard",
+  "preset": "standard",
+  "verification": {
+    "testCommand": "npm test --prefix web && pytest pipeline/tests/ -q"
+  }
+}

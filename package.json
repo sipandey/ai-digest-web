@@ -1,0 +1,20 @@
+{
+  "name": "ai-digest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Digest - Personalised arXiv research paper digests in Notion",
+  "scripts": {
+    "test": "npm test --prefix web && pytest pipeline/tests/ -q",
+    "test:web": "npm test --prefix web",
+    "test:pipeline": "pytest pipeline/tests/ -q",
+    "validate": "create-agent-room validate .",
+    "lint-sessions": "create-agent-room lint-sessions .",
+    "eval": "create-agent-room eval",
+    "doctor": "create-agent-room doctor .",
+    "verify": "create-agent-room verify .",
+    "sync": "create-agent-room sync --all"
+  },
+  "devDependencies": {
+    "create-agent-room": "2.6.0"
+  }
+}

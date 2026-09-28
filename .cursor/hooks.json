@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": "node .agent-room/hooks/close-the-loop-check.js --adapter=cursor",
+        "loop_limit": 5
+      }
+    ]
+  }
+}

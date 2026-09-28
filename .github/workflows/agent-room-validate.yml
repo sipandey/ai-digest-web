@@ -1,0 +1,34 @@
+name: agent-room-validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Pinned to the create-agent-room version active when this workflow was
+      # scaffolded, so CI results stay reproducible across runs. To pick up
+      # fixes from a newer release, re-run `create-agent-room init --force`
+      # (or bump the version below by hand) and commit the change.
+      #
+      # Installed explicitly rather than run via `npx --yes pkg@version cmd`:
+      # npx's temporary-install/exec-resolution path has been observed to
+      # fail intermittently on GitHub-hosted runners ("sh: 1: create-agent-room:
+      # not found", even though the package installed correctly) - a global
+      # install + direct invocation sidesteps that machinery entirely.
+      - name: Install create-agent-room@2.6.0
+        run: npm install -g create-agent-room@2.6.0
+      - name: Validate AIDigestWeb agent-room structure
+        run: create-agent-room validate .
+      - name: Lint session logs
+        run: create-agent-room lint-sessions .
+      - name: Run compliance evals
+        run: create-agent-room eval
