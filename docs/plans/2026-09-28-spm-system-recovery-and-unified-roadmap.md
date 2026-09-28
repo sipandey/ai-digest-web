@@ -3,9 +3,9 @@ title: "SPM System Recovery and Unified Architecture Roadmap"
 date: "2026-09-28"
 research_doc: "docs/research/2026-09-28-spm-system-audit-and-unified-architecture.md"
 branch: "feature/spm-audit-roadmap"
-status: "in-progress"
+status: "complete"
 phases_total: 4
-phases_completed: 3
+phases_completed: 4
 ---
 
 # SPM System Recovery and Unified Architecture Roadmap
@@ -99,10 +99,10 @@ Consolidate authentication onto Clerk, provide a migration path for existing gue
 Expand delivery beyond Notion to email and team chat, and implement relevance feedback loops to personalize paper recommendations.
 
 ### Tasks:
-- [ ] Implement daily HTML email digest delivery via Resend/Postmark.
-- [ ] Add Slack/Discord incoming webhook integration for engineering team digests.
-- [ ] Implement "More like this" / "Less like this" rating controls to refine per-user scoring vectors.
-- [ ] Run full CAR CI verification and regression evals.
+- [x] Implement daily HTML email digest delivery via Resend/Postmark.
+- [x] Add Slack/Discord incoming webhook integration for engineering team digests.
+- [x] Implement "More like this" / "Less like this" rating controls to refine per-user scoring vectors.
+- [x] Run full CAR CI verification and regression evals.
 
 #### Automated Verification:
 `npm run validate && npm run eval && npm run verify`

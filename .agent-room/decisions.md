@@ -16,6 +16,12 @@ have to re-derive it from scratch by reading git history.
 
 <!-- Entries go below this line, newest first. -->
 
+### 2026-09-28 — Multi-channel growth and personalization feedback loop
+
+**Decision:** Created `paper_feedback` table and `/api/users/feedback` endpoint enabling users to rate papers 👍 ("more like this") and 👎 ("less like this") directly on the in-app Web Reader. Incorporated user feedback categories into `ranker.py` and `pipeline.py` to boost relevant papers (+0.6) and penalize unwanted domains (-0.8). Extended `user_configs` and pipeline delivery with `webhook_client.py` (Slack Block Kit, Discord Embeds, generic webhooks) and `email_client.py` (responsive HTML email digest via Resend API), configurable in Settings.
+**Why:** Unlocks user growth across team workspaces (Slack/Discord channels) and personal communication channels (email), and establishes a continuous reinforcement loop where every user interaction improves daily digest relevance.
+**Rejected:** Static un-personalized scoring heuristics; relying solely on Notion as an integration channel; hardcoding email delivery without dry-run fallback.
+
 ### 2026-09-28 — In-app Web Digest reader and optional Notion destination
 
 **Decision:** Created `digests` Supabase table and `/api/users/digests` endpoint storing daily evaluated papers JSON per user per run date. Built an interactive In-App Web Digest Reader on `/dashboard` with search, category filtering, collapsible technical breakdowns, and lens takeaway spotlight cards. Made Notion integration optional during onboarding and settings, allowing users without Notion to use the application immediately.
