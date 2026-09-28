@@ -14,8 +14,22 @@
 --   the schema.sql CREATE TABLE but may be absent in older deployments).
 -- =============================================================================
 
--- 1. Drop the partial unique index from the previous migration
-DROP INDEX IF EXISTS users_notion_bot_id_key;
+-- 1. Drop the partial unique index from the previous migration if it exists independently
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND tablename = 'users'
+      AND indexname = 'users_notion_bot_id_key'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'users_notion_bot_id_key'
+      AND conrelid = 'users'::regclass
+  ) THEN
+    EXECUTE 'DROP INDEX users_notion_bot_id_key';
+  END IF;
+END$$;
 
 -- 2. Add a proper unique constraint (allows multiple NULLs; blocks duplicate non-null values)
 --    Wrapped in DO block because ADD CONSTRAINT has no IF NOT EXISTS.

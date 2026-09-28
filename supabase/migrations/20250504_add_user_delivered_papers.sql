@@ -40,6 +40,7 @@ CREATE INDEX IF NOT EXISTS user_delivered_papers_arxiv_id_idx
 -- Users can inspect their own history via the anon/authenticated key.
 ALTER TABLE user_delivered_papers ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS user_delivered_papers_select_own ON user_delivered_papers;
 CREATE POLICY user_delivered_papers_select_own ON user_delivered_papers
   FOR SELECT USING (
     user_id IN (
