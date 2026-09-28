@@ -236,6 +236,28 @@ CREATE INDEX IF NOT EXISTS guest_sessions_user_id_idx
   ON guest_sessions (user_id);
 
 -- =============================================================================
+-- TABLE: digests
+-- Daily summarized papers per user for in-app Web Digest reader viewing.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS digests (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  run_date    date        NOT NULL DEFAULT current_date,
+  lens        text        NOT NULL DEFAULT 'builder' CHECK (lens IN ('founder', 'builder', 'researcher')),
+  papers      jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  top_score   float8,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT digests_user_date_key UNIQUE (user_id, run_date)
+);
+
+COMMENT ON TABLE digests IS
+  'Daily summarized papers per user for in-app Web Digest reader viewing, independent of Notion export.';
+
+CREATE INDEX IF NOT EXISTS digests_user_date_idx
+  ON digests (user_id, run_date DESC);
+
+-- =============================================================================
 -- Row Level Security
 -- =============================================================================
 
@@ -246,6 +268,7 @@ ALTER TABLE papers_cache           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE paper_rankings_cache   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_delivered_papers  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE guest_sessions         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE digests                ENABLE ROW LEVEL SECURITY;
 
 -- users — match directly on clerk_id exposed by Clerk JWT
 DROP POLICY IF EXISTS users_select_own ON users;
@@ -296,6 +319,15 @@ CREATE POLICY user_delivered_papers_select_own ON user_delivered_papers
     )
   );
 
+-- digests — users can read their own daily in-app digests
+DROP POLICY IF EXISTS digests_select_own ON digests;
+CREATE POLICY digests_select_own ON digests
+  FOR SELECT USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
 -- user_configs — minimal anon read for GitHub Actions scheduling check gate
 GRANT SELECT (digest_hour, timezone_offset)
   ON user_configs
@@ -306,4 +338,4 @@ CREATE POLICY user_configs_anon_scheduling_read
   ON user_configs
   FOR SELECT
   TO anon
-  USING (active = true AND notion_connected = true);
+  USING (active = true);

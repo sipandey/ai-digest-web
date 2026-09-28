@@ -161,26 +161,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: postErrors.join("; ") }, { status: 400 });
     }
 
-    // Validate Notion credentials before persisting — uses plaintext values
-    // from the request body, before encryption.
-    const check = await validateNotionCredentials(
-      String(notionToken ?? ""),
-      String(notionDatabaseId ?? ""),
-    );
-    if (!check.ok) {
-      return NextResponse.json({ error: check.error }, { status: 400 });
+    // Notion credentials validation (optional)
+    let encryptedToken: string | null = null;
+    let encryptedDatabaseId: string | null = null;
+    let notionConnected = false;
+
+    if (notionToken && notionDatabaseId) {
+      const check = await validateNotionCredentials(
+        String(notionToken),
+        String(notionDatabaseId),
+      );
+      if (!check.ok) {
+        return NextResponse.json({ error: check.error }, { status: 400 });
+      }
+
+      [encryptedToken, encryptedDatabaseId] = await Promise.all([
+        encrypt(String(notionToken)),
+        encrypt(String(notionDatabaseId)),
+      ]);
+      notionConnected = true;
     }
 
-    // Encrypt credentials at the application layer before persisting.
-    const [encryptedToken, encryptedDatabaseId] = await Promise.all([
-      encrypt(String(notionToken)),
-      encrypt(String(notionDatabaseId)),
-    ]);
-
     const { data, error } = await saveUserConfig(userId, {
-      notion_token: encryptedToken,
-      notion_database_id: encryptedDatabaseId,
-      notion_connected: true,
+      ...(encryptedToken ? { notion_token: encryptedToken } : {}),
+      ...(encryptedDatabaseId ? { notion_database_id: encryptedDatabaseId } : {}),
+      notion_connected: notionConnected,
       topics,
       profile_description: profileDescription,
       experience_level: experienceLevel,

@@ -235,6 +235,30 @@ def _upsert_run(user_id: str, run_date: str, **fields) -> str:
     return result.data[0]["id"]
 
 
+def _save_user_digest(
+    user_id: str, run_date: str, lens: str, papers: list[dict]
+) -> None:
+    """Upsert daily digest papers JSON into the digests table for in-app web viewing."""
+    top_score = float(papers[0].get("score", 0)) if papers else None
+    try:
+        supabase.table("digests").upsert(
+            {
+                "user_id": user_id,
+                "run_date": run_date,
+                "lens": lens,
+                "papers": papers,
+                "top_score": top_score,
+            },
+            on_conflict="user_id,run_date",
+        ).execute()
+        log.info(
+            "Saved in-app digest record",
+            extra={"user_id": user_id, "run_date": run_date, "papers_count": len(papers)},
+        )
+    except Exception as exc:
+        log.warning("Failed to save in-app digest to digests table: %s", exc)
+
+
 # ── fatal-error recovery ───────────────────────────────────────────────────────
 
 def _fail_pending_runs(run_date: str, target_user_id: Optional[str], error: str) -> None:
@@ -468,6 +492,7 @@ def main() -> None:
                         "completed_at": _now(),
                     }
                 ).eq("id", run_id).execute()
+                _save_user_digest(user_id, run_date, lens, [])
                 log.info(
                     "User run empty — no papers passed threshold",
                     extra={"run_date": run_date, "run_id": run_id, "user_id": user_id},
@@ -475,10 +500,27 @@ def main() -> None:
                 succeeded += 1
                 continue
 
-            # Per-user Notion delivery
-            notion_url = deliver_to_notion(
-                scored, user_config, run_date, owner_mode=owner_mode, lens=lens
-            )
+            # Save in-app digest for web reading
+            _save_user_digest(user_id, run_date, lens, scored)
+
+            # Optional Notion delivery (if configured and connected)
+            notion_url: Optional[str] = None
+            if (
+                user_config.get("notion_connected")
+                and user_config.get("notion_token")
+                and user_config.get("notion_database_id")
+            ):
+                try:
+                    notion_url = deliver_to_notion(
+                        scored, user_config, run_date, owner_mode=owner_mode, lens=lens
+                    )
+                except Exception as notion_exc:
+                    log.warning(
+                        "Notion delivery failed for user %s: %s (in-app digest remains available)",
+                        user_id,
+                        notion_exc,
+                    )
+
             top_score = float(scored[0].get("score", 0)) if scored else None
 
             # Record delivered papers so they are excluded from future digests

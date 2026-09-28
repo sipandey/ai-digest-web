@@ -206,3 +206,45 @@ class TestNotionBlockRendering:
         block_text = str(blocks)
         assert "Theoretical Insight" in block_text
         assert "Research Question" in block_text
+
+
+# ── Digest Table Persistence ──────────────────────────────────────────────────
+
+class TestDigestPersistence:
+    def test_save_user_digest_upserts_row(self):
+        from unittest.mock import patch, MagicMock
+        from pipeline import _save_user_digest
+
+        with patch("pipeline.supabase") as mock_sb:
+            mock_table = MagicMock()
+            mock_sb.table.return_value = mock_table
+            mock_table.upsert.return_value = mock_table
+
+            _save_user_digest("u-123", "2026-09-28", LENS_FOUNDER, [SAMPLE_PAPER])
+
+            mock_sb.table.assert_called_with("digests")
+            mock_table.upsert.assert_called_once()
+            args, kwargs = mock_table.upsert.call_args
+            row = args[0]
+            assert row["user_id"] == "u-123"
+            assert row["run_date"] == "2026-09-28"
+            assert row["lens"] == LENS_FOUNDER
+            assert row["top_score"] == 8.7
+            assert len(row["papers"]) == 1
+            assert kwargs["on_conflict"] == "user_id,run_date"
+
+    def test_save_user_digest_empty_papers(self):
+        from unittest.mock import patch, MagicMock
+        from pipeline import _save_user_digest
+
+        with patch("pipeline.supabase") as mock_sb:
+            mock_table = MagicMock()
+            mock_sb.table.return_value = mock_table
+            mock_table.upsert.return_value = mock_table
+
+            _save_user_digest("u-123", "2026-09-28", LENS_BUILDER, [])
+
+            row = mock_table.upsert.call_args[0][0]
+            assert row["papers"] == []
+            assert row["top_score"] is None
+
