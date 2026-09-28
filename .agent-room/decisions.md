@@ -16,6 +16,12 @@ have to re-derive it from scratch by reading git history.
 
 <!-- Entries go below this line, newest first. -->
 
+### 2026-09-28 — Strictly idempotent Supabase migrations and consolidated master schema
+
+**Decision:** Formatted all Supabase SQL migration files with conditional guards (`DROP POLICY IF EXISTS`, conditional index drops that respect table constraints, `pg_cron` availability checks) and updated the canonical `supabase/schema.sql` to include all runtime table columns (`trigger_count`, `timezone_offset FLOAT8`, `guest_sessions`, anon read policies).
+**Why:** Prevents duplicate policy/constraint crashes during fresh project spin-up or re-running migrations, avoiding divergence between initial schema definitions and delta migrations.
+**Rejected:** Requiring manual step-by-step CLI execution or separate uncoordinated setup scripts.
+
 ### 2026-09-28 — Unify dual-path architecture via Digest Lenses and Web Digest reader
 
 **Decision:** Adopted the Digest Lens framework (`founder`, `builder`, `researcher`) to generalize the hardcoded `owner_mode` across all users, and consolidated authentication onto Clerk with an in-app Web Digest reader, making Notion an optional export destination.
