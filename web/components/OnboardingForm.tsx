@@ -13,9 +13,12 @@ type ExperienceLevel =
   | "practitioner"
   | "ml_engineer";
 
+export type DigestLens = "builder" | "founder" | "researcher";
+
 type FormData = {
   profileDescription: string;
   experienceLevel: ExperienceLevel;
+  digestLens: DigestLens;
   topics: string[];
   notionToken: string;
   notionDatabaseId: string;
@@ -26,6 +29,12 @@ type FormData = {
 type ConnectionStatus = "idle" | "testing" | "success" | "error";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
+
+const DIGEST_LENSES: { value: DigestLens; label: string; sub: string; icon: string }[] = [
+  { value: "builder", label: "Builder", sub: "Code, architectures & practical engineering implementation", icon: "🛠️" },
+  { value: "founder", label: "Founder", sub: "Market signals, consumer pain points & product opportunities", icon: "💡" },
+  { value: "researcher", label: "Researcher", sub: "Deep-tech, theoretical novelties, proofs & claims", icon: "🔬" },
+];
 
 const EXPERIENCE_LEVELS: { value: ExperienceLevel; label: string; sub: string }[] = [
   { value: "beginner", label: "Complete beginner", sub: "Just starting with AI" },
@@ -66,6 +75,7 @@ export default function OnboardingForm() {
   const [form, setForm] = useState<FormData>(() => ({
     profileDescription: "",
     experienceLevel: "developer_learning_ai",
+    digestLens: "builder",
     topics: [],
     notionToken: "",
     notionDatabaseId: "",
@@ -135,9 +145,11 @@ export default function OnboardingForm() {
         body: JSON.stringify({
           profileDescription: form.profileDescription,
           experienceLevel: form.experienceLevel,
+          digestLens: form.digestLens,
           topics: form.topics,
-          notionToken: form.notionToken,
-          notionDatabaseId: form.notionDatabaseId,
+          ...(form.notionToken && form.notionDatabaseId
+            ? { notionToken: form.notionToken, notionDatabaseId: form.notionDatabaseId }
+            : {}),
           digestHour: form.digestHour,
           timezoneOffset: form.timezoneOffset,
         }),
@@ -218,6 +230,41 @@ export default function OnboardingForm() {
               <p className={`text-xs mt-2 transition-colors ${form.profileDescription.trim().length >= 50 ? "text-emerald-600" : "text-gray-300"}`}>
                 {form.profileDescription.trim().length} / 50 minimum
               </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                Digest Lens
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                How papers will be prioritized and synthesized for you.
+              </p>
+              <div className="space-y-2">
+                {DIGEST_LENSES.map(({ value, label, sub, icon }) => (
+                  <label
+                    key={value}
+                    className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                      form.digestLens === value
+                        ? "border-indigo-600 bg-indigo-50/60 shadow-xs ring-1 ring-indigo-500/20"
+                        : "border-gray-200 hover:border-gray-300 bg-gray-50/40"
+                    }`}
+                  >
+                    <span className="text-xl shrink-0 mt-0.5" role="img" aria-label={label}>{icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[#14141e]">{label}</p>
+                      <p className="text-xs text-gray-500 leading-snug mt-0.5">{sub}</p>
+                    </div>
+                    <input
+                      type="radio"
+                      name="digestLens"
+                      value={value}
+                      checked={form.digestLens === value}
+                      onChange={() => setForm((f) => ({ ...f, digestLens: value }))}
+                      className="sr-only"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
 
             <div className="mb-8">
@@ -327,11 +374,16 @@ export default function OnboardingForm() {
           </>
         )}
 
-        {/* ── STEP 3: Connect Notion ───────────────────────────────────────── */}
+        {/* ── STEP 3: Connect Notion (Optional) ───────────────────────────── */}
         {step === 3 && (
           <>
-            <h1 className="text-xl font-bold text-[#14141e] mb-1">Connect Notion</h1>
-            <p className="text-sm text-gray-500 mb-7">Your digest will be delivered here every morning.</p>
+            <div className="flex items-center justify-between mb-1">
+              <h1 className="text-xl font-bold text-[#14141e]">Connect Notion</h1>
+              <span className="text-xs bg-gray-100 text-gray-500 font-medium px-2 py-0.5 rounded-md">Optional</span>
+            </div>
+            <p className="text-sm text-gray-500 mb-6">
+              Connect Notion to sync your digests automatically, or skip to view everything directly in your web dashboard.
+            </p>
 
             <ol className="space-y-2 mb-7">
               {[
@@ -390,9 +442,22 @@ export default function OnboardingForm() {
               <p className="text-sm text-red-500 mb-4">{connectionError}</p>
             )}
 
-            <div className="flex gap-3 mt-2">
-              <GhostButton onClick={() => setStep(2)}>Back</GhostButton>
-              <PrimaryButton onClick={() => setStep(4)} disabled={!step3Complete}>Continue</PrimaryButton>
+            <div className="flex flex-col gap-2.5 mt-2">
+              <div className="flex gap-3">
+                <GhostButton onClick={() => setStep(2)}>Back</GhostButton>
+                <PrimaryButton onClick={() => setStep(4)} disabled={!step3Complete}>Continue with Notion</PrimaryButton>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setConnectionStatus("idle");
+                  setForm((f) => ({ ...f, notionToken: "", notionDatabaseId: "" }));
+                  setStep(4);
+                }}
+                className="text-xs text-gray-500 hover:text-indigo-600 font-medium py-2 text-center transition-colors"
+              >
+                Skip for now — read in web dashboard →
+              </button>
             </div>
           </>
         )}

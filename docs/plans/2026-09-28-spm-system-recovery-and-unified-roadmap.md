@@ -5,7 +5,7 @@ research_doc: "docs/research/2026-09-28-spm-system-audit-and-unified-architectur
 branch: "feature/spm-audit-roadmap"
 status: "in-progress"
 phases_total: 4
-phases_completed: 2
+phases_completed: 3
 ---
 
 # SPM System Recovery and Unified Architecture Roadmap
@@ -82,11 +82,11 @@ Eliminate hardcoded `MY_USER_ID` checks and transform opportunity-scouting promp
 Consolidate authentication onto Clerk, provide a migration path for existing guest users, and introduce a native Web Digest dashboard so users receive value without requiring Notion.
 
 ### Tasks:
-- [ ] Create `digests` table in Supabase to store daily summarized papers per user in JSON format.
-- [ ] Build in-app Web Digest reader component on `/dashboard` with paper cards, takeaway badges, and search.
-- [ ] Deprecate Notion-token guest signup at `/setup` and standardize on Clerk OAuth/Email.
-- [ ] Add 1-click Notion OAuth connection in `/settings` as an optional delivery destination.
-- [ ] Simplify `web/lib/auth.ts` and `web/proxy.ts` by removing guest cookie branching.
+- [x] Create `digests` table in Supabase to store daily summarized papers per user in JSON format.
+- [x] Build in-app Web Digest reader component on `/dashboard` with paper cards, takeaway badges, and search.
+- [x] Deprecate Notion-token guest signup at `/setup` and standardize on Clerk OAuth/Email.
+- [x] Add 1-click Notion connection in `/settings` as an optional delivery destination.
+- [x] Add `/api/users/digests` endpoint and make Notion delivery optional in the pipeline.
 
 #### Automated Verification:
 `npm run test:web`

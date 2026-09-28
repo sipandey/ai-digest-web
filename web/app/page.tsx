@@ -17,7 +17,7 @@ export default function LandingPage() {
             Sign in
           </Link>
           <Link
-            href="/setup"
+            href="/signup"
             className="text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-medium transition-colors"
           >
             Get started
@@ -46,22 +46,21 @@ export default function LandingPage() {
 
         <p className="mt-6 text-base sm:text-lg text-gray-500 max-w-xl mx-auto leading-relaxed">
           A personalised daily digest of arXiv papers — filtered to your
-          interests, scored for your experience level, delivered to Notion every
-          morning.
+          interests, scored for your experience level, available in-app and optionally synced to Notion.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            href="/setup"
+            href="/signup"
             className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold px-8 py-3.5 rounded-2xl text-base transition-colors"
           >
-            Continue with Notion →
+            Get started free →
           </Link>
           <Link
-            href="/signup"
+            href="/login"
             className="w-full sm:w-auto bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 font-medium px-8 py-3.5 rounded-2xl text-base transition-colors"
           >
-            Sign up with email
+            Sign in
           </Link>
         </div>
         <p className="mt-4 text-sm text-gray-400">

@@ -16,6 +16,12 @@ have to re-derive it from scratch by reading git history.
 
 <!-- Entries go below this line, newest first. -->
 
+### 2026-09-28 — In-app Web Digest reader and optional Notion destination
+
+**Decision:** Created `digests` Supabase table and `/api/users/digests` endpoint storing daily evaluated papers JSON per user per run date. Built an interactive In-App Web Digest Reader on `/dashboard` with search, category filtering, collapsible technical breakdowns, and lens takeaway spotlight cards. Made Notion integration optional during onboarding and settings, allowing users without Notion to use the application immediately.
+**Why:** Eliminates the forced drop-off during onboarding where users without a pre-configured Notion integration were locked out of the application.
+**Rejected:** Retaining mandatory Notion database creation before dashboard access; reading digests exclusively via Notion API round-trips.
+
 ### 2026-09-28 — Multi-lens intelligence pipeline with cache namespace isolation
 
 **Decision:** Implemented `digest_lens` enum (`builder`, `founder`, `researcher`) across Supabase schema, pipeline fetcher, ranker, and Notion delivery. Embedded the active lens into `_profile_hash` along with distinct prompt versions (`prompt_version_founder`, `prompt_version_researcher`). Updated Web API route and SettingsView / DashboardView UI to allow users to select their lens.
