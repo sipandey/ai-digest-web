@@ -22,6 +22,8 @@ from pipeline_config import (
 )
 from ranker import rank_papers
 from notion_client import deliver_to_notion
+from webhook_client import deliver_to_webhook
+from email_client import deliver_to_email
 
 
 # ── logging setup ──────────────────────────────────────────────────────────────
@@ -520,6 +522,20 @@ def main() -> None:
                         user_id,
                         notion_exc,
                     )
+
+            # Multi-channel delivery: Team Webhook (Slack / Discord / Generic)
+            if user_config.get("webhook_url"):
+                try:
+                    deliver_to_webhook(scored, user_config, run_date, lens=lens)
+                except Exception as hook_exc:
+                    log.warning("Webhook delivery failed for user %s: %s", user_id, hook_exc)
+
+            # Multi-channel delivery: HTML Email Digest
+            if user_config.get("email_digest_enabled"):
+                try:
+                    deliver_to_email(scored, user_config, run_date, lens=lens)
+                except Exception as email_exc:
+                    log.warning("Email delivery failed for user %s: %s", user_id, email_exc)
 
             top_score = float(scored[0].get("score", 0)) if scored else None
 
