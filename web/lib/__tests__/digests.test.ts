@@ -42,7 +42,7 @@ describe("GET /api/users/digests", () => {
 
   it("returns 401 Unauthorized when not logged in", async () => {
     mockGetAuthUserId.mockResolvedValue(null);
-    const req = new NextRequest("http://localhost:3000/api/users/digests");
+    const req = new NextRequest("http://localhost:3100/api/users/digests");
     const res = await GET(req);
     expect(res.status).toBe(401);
     const body = await res.json();
@@ -77,7 +77,7 @@ describe("GET /api/users/digests", () => {
     chain.limit.mockResolvedValueOnce({ data: sampleHistory, error: null });
     chain.maybeSingle.mockResolvedValueOnce({ data: sampleDigest, error: null });
 
-    const req = new NextRequest("http://localhost:3000/api/users/digests");
+    const req = new NextRequest("http://localhost:3100/api/users/digests");
     const res = await GET(req);
     expect(res.status).toBe(200);
 
@@ -95,7 +95,7 @@ describe("GET /api/users/digests", () => {
       error: null,
     });
 
-    const req = new NextRequest("http://localhost:3000/api/users/digests?date=2026-09-20");
+    const req = new NextRequest("http://localhost:3100/api/users/digests?date=2026-09-20");
     const res = await GET(req);
     expect(res.status).toBe(200);
 

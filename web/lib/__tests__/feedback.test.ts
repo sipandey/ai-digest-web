@@ -43,7 +43,7 @@ describe("/api/users/feedback", () => {
   describe("GET /api/users/feedback", () => {
     it("returns 401 when unauthenticated", async () => {
       mockGetAuthUserId.mockResolvedValue(null);
-      const req = new NextRequest("http://localhost:3000/api/users/feedback");
+      const req = new NextRequest("http://localhost:3100/api/users/feedback");
       const res = await GET(req);
       expect(res.status).toBe(401);
     });
@@ -58,7 +58,7 @@ describe("/api/users/feedback", () => {
         error: null,
       });
 
-      const req = new NextRequest("http://localhost:3000/api/users/feedback");
+      const req = new NextRequest("http://localhost:3100/api/users/feedback");
       const res = await GET(req);
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -72,7 +72,7 @@ describe("/api/users/feedback", () => {
   describe("POST /api/users/feedback", () => {
     it("returns 401 when unauthenticated", async () => {
       mockGetAuthUserId.mockResolvedValue(null);
-      const req = new NextRequest("http://localhost:3000/api/users/feedback", {
+      const req = new NextRequest("http://localhost:3100/api/users/feedback", {
         method: "POST",
         body: JSON.stringify({ arxiv_id: "2401.0001", rating: "more" }),
       });
@@ -82,7 +82,7 @@ describe("/api/users/feedback", () => {
 
     it("rejects invalid rating value", async () => {
       mockGetAuthUserId.mockResolvedValue("user-123");
-      const req = new NextRequest("http://localhost:3000/api/users/feedback", {
+      const req = new NextRequest("http://localhost:3100/api/users/feedback", {
         method: "POST",
         body: JSON.stringify({ arxiv_id: "2401.0001", rating: "awesome" }),
       });
@@ -96,7 +96,7 @@ describe("/api/users/feedback", () => {
       mockGetAuthUserId.mockResolvedValue("user-123");
       chain.upsert.mockResolvedValue({ error: null });
 
-      const req = new NextRequest("http://localhost:3000/api/users/feedback", {
+      const req = new NextRequest("http://localhost:3100/api/users/feedback", {
         method: "POST",
         body: JSON.stringify({
           arxiv_id: "2401.0001",
@@ -120,7 +120,7 @@ describe("/api/users/feedback", () => {
         eq: vi.fn().mockResolvedValue({ error: null }),
       });
 
-      const req = new NextRequest("http://localhost:3000/api/users/feedback?arxiv_id=2401.0001", {
+      const req = new NextRequest("http://localhost:3100/api/users/feedback?arxiv_id=2401.0001", {
         method: "DELETE",
       });
       const res = await DELETE(req);

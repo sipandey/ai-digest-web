@@ -12,10 +12,10 @@ RUN npm ci
 # Copy application source code
 COPY . .
 
-ENV PORT=3000
+ENV PORT=3100
 ENV HOSTNAME="0.0.0.0"
 
-EXPOSE 3000
+EXPOSE 3100
 
 # Default to development server for fast local testing
 CMD ["npm", "run", "dev"]

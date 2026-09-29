@@ -6,10 +6,10 @@ services:
     container_name: aidigest-web
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3100:3100"
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      - NEXT_PUBLIC_APP_URL=http://localhost:3100
       - PIPELINE_SERVICE_URL=http://pipeline:8000
     env_file:
       - .env

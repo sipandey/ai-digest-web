@@ -28,14 +28,14 @@ echo ""
 echo "--- [2/3] Starting Next.js Web App in Docker Container ---"
 docker compose up -d web
 
-# 4. Wait for Next.js to start listening on port 3000
-echo "Waiting for web server to respond on http://localhost:3000..."
+# 4. Wait for Next.js to start listening on port 3100
+echo "Waiting for web server to respond on http://localhost:3100..."
 MAX_ATTEMPTS=30
 ATTEMPT=0
 READY=false
 
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-  if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/login | grep -q "200\|307\|308"; then
+  if curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/login | grep -q "200\|307\|308"; then
     READY=true
     break
   fi
@@ -44,7 +44,7 @@ while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
 done
 
 if [ "$READY" = true ]; then
-  echo "✅ Web service is UP and responding on http://localhost:3000!"
+  echo "✅ Web service is UP and responding on http://localhost:3100!"
 else
   echo "⚠️ Web service did not respond within 60s. Checking logs:"
   docker compose logs --tail=30 web
@@ -54,13 +54,13 @@ fi
 # 5. Quick Health / Endpoint verification
 echo ""
 echo "--- [3/3] Verifying Endpoints ---"
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/)
-echo "Landing page (http://localhost:3000/) returned HTTP $HTTP_STATUS"
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/)
+echo "Landing page (http://localhost:3100/) returned HTTP $HTTP_STATUS"
 
 echo ""
 echo "========================================================"
 echo "🎉 Local Docker test successfully verified!"
-echo "   - Web App URL: http://localhost:3000"
+echo "   - Web App URL: http://localhost:3100"
 echo "   - View logs:   docker compose logs -f web"
 echo "   - Tear down:   docker compose down"
 echo "========================================================"
