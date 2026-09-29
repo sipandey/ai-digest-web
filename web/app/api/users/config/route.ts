@@ -434,7 +434,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     return NextResponse.json({ config: await prepareConfigForResponse(data as Record<string, unknown>) });
-  } catch {
+  } catch (err) {
+    console.error("PATCH /api/users/config failed:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
