@@ -3,9 +3,9 @@ title: "Streamline Settings Scope and Unified Intelligence Control Tower"
 date: "2026-09-29"
 research_doc: "docs/research/2026-09-29-settings-scope-and-streamlining-audit.md"
 branch: "feature/spm-audit-roadmap"
-status: "in-progress"
+status: "complete"
 phases_total: 4
-phases_completed: 1
+phases_completed: 4
 ---
 
 # Plan: Streamline Settings Scope & Unified Intelligence Control Tower
@@ -41,13 +41,13 @@ Enhance backend endpoints to support complete lifecycle management for channels,
 Eliminate the 4 disjointed save buttons. Implement a cohesive 4-pillar layout with dirty-state tracking and a single unified save bar.
 
 ### Tasks
-- [ ] Restructure `web/components/SettingsView.tsx` into a responsive, 4-pillar navigation structure:
+- [x] Restructure `web/components/SettingsView.tsx` into a responsive, 4-pillar navigation structure:
   1. **Intelligence** (Lens, Topics, Project Context, Experience Level)
   2. **Schedule** (Active toggle / Vacation mode, Delivery time, Timezone)
   3. **Channels Hub** (Web Dashboard, Daily Email, Slack/Discord Webhooks, Notion)
   4. **Account & Tier** (Profile, Plan tier, Sign out)
-- [ ] Replace section-specific save handlers with a unified dirty-tracking state and floating/sticky save bar (`Save changes` / `Discard`).
-- [ ] Widen desktop container to `max-w-3xl` with clean card grouping for comfortable desktop viewing.
+- [x] Replace section-specific save handlers with a unified dirty-tracking state and floating/sticky save bar (`Save changes` / `Discard`).
+- [x] Widen desktop container to `max-w-3xl` with clean card grouping for comfortable desktop viewing.
 
 #### Automated Verification:
 `npm run test:web`
@@ -60,10 +60,10 @@ Eliminate the 4 disjointed save buttons. Implement a cohesive 4-pillar layout wi
 Elevate all export destinations into a unified, transparent Channels Hub with live testing and lifecycle controls.
 
 ### Tasks
-- [ ] Integrate Notion into the Channels Hub with clear connection status and a 1-click **Disconnect Notion** action with confirmation.
-- [ ] Add "Send Test Webhook" button for Slack and Discord channels with live success/failure feedback.
-- [ ] Add quick-select topic chips in the Topics section (matching the onboarding experience).
-- [ ] Add AI Feedback Memory card showing total rated papers and a "Reset AI Feedback" action.
+- [x] Integrate Notion into the Channels Hub with clear connection status and a 1-click **Disconnect Notion** action with confirmation.
+- [x] Add "Send Test Webhook" button for Slack and Discord channels with live success/failure feedback.
+- [x] Add quick-select topic chips in the Topics section (matching the onboarding experience).
+- [x] Add AI Feedback Memory card showing total rated papers and a "Reset AI Feedback" action.
 
 #### Automated Verification:
 `npm run test:web`
@@ -76,9 +76,9 @@ Elevate all export destinations into a unified, transparent Channels Hub with li
 Run the complete verification pipeline, test all settings flows, and ensure CAR governance compliance.
 
 ### Tasks
-- [ ] Run full test suite: `npm test` (Vitest + Pytest).
-- [ ] Verify TypeScript build: `npm run build --prefix web`.
-- [ ] Run CAR room validation: `npm run validate && npm run eval && npm run doctor`.
+- [x] Run full test suite: `npm test` (Vitest + Pytest).
+- [x] Verify TypeScript build: `npm run build --prefix web`.
+- [x] Run CAR room validation: `npm run validate && npm run eval && npm run doctor`.
 
 #### Automated Verification:
 `npm test && npm run validate`
