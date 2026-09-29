@@ -423,7 +423,9 @@ export async function PATCH(req: NextRequest) {
       updates["notion_token"] = await encrypt(updates["notion_token"] as string);
     }
     if (updatingDbId) {
-      updates["notion_database_id"] = await encrypt(cleanNotionDatabaseId(plainDbId));
+      updates["notion_database_id"] = await encrypt(
+        cleanNotionDatabaseId(updates["notion_database_id"] as string),
+      );
     }
 
     const { data, error } = await saveUserConfig(userId, updates);
