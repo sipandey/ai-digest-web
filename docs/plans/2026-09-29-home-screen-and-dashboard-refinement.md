@@ -49,12 +49,12 @@ Eliminate code duplication between `web/components/DashboardView.tsx` and `web/c
 Upgrade the core reading experience inside `web/components/digest/` to empower quick triage, deep reading, bookmarking, and team sharing.
 
 ### Tasks
-- [ ] Update `web/components/digest/PaperCard.tsx`:
+- [x] Update `web/components/digest/PaperCard.tsx`:
   - Add 1-click **Bookmark / Star** toggle button with active styling.
   - Add 1-click **Copy Takeaway** button (copies formatted title, score, builder takeaway, and arXiv link to clipboard with visual toast).
   - Elevate the **Lens Takeaway Spotlight box** typography and visual hierarchy.
   - Add visual feedback micro-confirmation when clicking `👍 More` / `👎 Less`.
-- [ ] Update `web/components/digest/DigestReader.tsx`:
+- [x] Update `web/components/digest/DigestReader.tsx`:
   - Add filter chip for **Saved / Bookmarked (⭐)** papers.
   - Add score filter for **Must-Read (8.0+)** papers.
   - Wire up bookmark state and count.

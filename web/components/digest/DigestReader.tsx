@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import PaperCard, { Paper } from "./PaperCard";
+import { getBookmarks, BOOKMARKS_EVENT_NAME } from "@/lib/bookmarks";
 
 export type DigestHistoryItem = {
   run_date: string;
@@ -80,12 +81,26 @@ export function DigestReader({
 }) {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [onlySaved, setOnlySaved] = useState(false);
+  const [minScore, setMinScore] = useState<number | null>(null);
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [feedbackMap, setFeedbackMap] = useState<Record<string, "more" | "less">>({});
 
   const today = todayISO();
   const papers = digest?.papers ?? [];
   const lens = digest?.lens ?? "builder";
   const activeLensLabel = LENS_LABELS[lens] ?? "🛠️ Builder Lens";
+
+  // Sync saved bookmarks from storage
+  useEffect(() => {
+    const syncBookmarks = () => {
+      const list = getBookmarks();
+      setBookmarkedIds(new Set(list.map((p) => p.arxiv_id)));
+    };
+    syncBookmarks();
+    window.addEventListener(BOOKMARKS_EVENT_NAME, syncBookmarks);
+    return () => window.removeEventListener(BOOKMARKS_EVENT_NAME, syncBookmarks);
+  }, []);
 
   // Fetch user feedback ratings on load
   useEffect(() => {
@@ -149,9 +164,23 @@ export function DigestReader({
     return Array.from(set).sort();
   }, [papers]);
 
-  // Filter papers by category and search term
+  const savedInDigestCount = useMemo(() => {
+    return papers.filter((p) => bookmarkedIds.has(p.arxiv_id)).length;
+  }, [papers, bookmarkedIds]);
+
+  const mustReadCount = useMemo(() => {
+    return papers.filter((p) => (p.score ?? 0) >= 8.0).length;
+  }, [papers]);
+
+  // Filter papers by category, bookmark status, score, and search query
   const filteredPapers = useMemo(() => {
     let result = papers;
+    if (onlySaved) {
+      result = result.filter((p) => bookmarkedIds.has(p.arxiv_id));
+    }
+    if (minScore !== null) {
+      result = result.filter((p) => (p.score ?? 0) >= minScore);
+    }
     if (selectedCat) {
       result = result.filter((p) => p.category === selectedCat);
     }
@@ -167,7 +196,16 @@ export function DigestReader({
       });
     }
     return result;
-  }, [papers, selectedCat, search]);
+  }, [papers, onlySaved, minScore, selectedCat, search, bookmarkedIds]);
+
+  const hasActiveFilters = onlySaved || minScore !== null || selectedCat !== null || search.trim() !== "";
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setSelectedCat(null);
+    setOnlySaved(false);
+    setMinScore(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -235,7 +273,7 @@ export function DigestReader({
           </div>
         </div>
 
-        {/* Search & Filter Bar */}
+        {/* Search & Precision Filter Bar */}
         {papers.length > 0 && (
           <div className="px-5 py-3.5 bg-[#fbfbfe] border-b border-gray-100 space-y-3">
             <div className="relative">
@@ -250,42 +288,91 @@ export function DigestReader({
                 <button
                   onClick={() => setSearch("")}
                   className="absolute right-2.5 top-2 text-xs text-gray-400 hover:text-gray-600"
+                  aria-label="Clear search"
                 >
                   ✕
                 </button>
               )}
             </div>
 
-            {categories.length > 1 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mr-1">
-                  Filter:
-                </span>
+            {/* Filter Pills: All / Saved / Must-Read / Categories */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mr-1">
+                Filter:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setOnlySaved(false);
+                  setMinScore(null);
+                  setSelectedCat(null);
+                }}
+                className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
+                  !onlySaved && minScore === null && selectedCat === null
+                    ? "bg-indigo-600 text-white font-medium"
+                    : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                }`}
+              >
+                All ({papers.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOnlySaved(!onlySaved)}
+                className={`text-xs px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 ${
+                  onlySaved
+                    ? "bg-amber-500 text-white font-medium shadow-xs"
+                    : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                }`}
+              >
+                <span>⭐</span>
+                <span>Saved ({savedInDigestCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMinScore(minScore === 8.0 ? null : 8.0)}
+                className={`text-xs px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 ${
+                  minScore === 8.0
+                    ? "bg-emerald-600 text-white font-medium shadow-xs"
+                    : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                }`}
+              >
+                <span>🔥</span>
+                <span>Must-Read 8.0+ ({mustReadCount})</span>
+              </button>
+
+              {categories.map((c) => (
                 <button
-                  onClick={() => setSelectedCat(null)}
+                  key={c}
+                  type="button"
+                  onClick={() => setSelectedCat(selectedCat === c ? null : c)}
                   className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
-                    selectedCat === null
+                    selectedCat === c
                       ? "bg-indigo-600 text-white font-medium"
                       : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
                   }`}
                 >
-                  All ({papers.length})
+                  {c}
                 </button>
-                {categories.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setSelectedCat(selectedCat === c ? null : c)}
-                    className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
-                      selectedCat === c
-                        ? "bg-indigo-600 text-white font-medium"
-                        : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
+              ))}
+            </div>
+
+            {/* Results Counter & Reset */}
+            <div className="flex items-center justify-between text-xs text-gray-500 pt-0.5">
+              <span>
+                Showing <strong className="text-gray-800">{filteredPapers.length}</strong> of {papers.length} papers
+              </span>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium hover:underline"
+                >
+                  Reset all filters
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -320,13 +407,23 @@ export function DigestReader({
               ))}
             </div>
           ) : papers.length > 0 && filteredPapers.length === 0 ? (
-            <div className="py-8 text-center space-y-2">
-              <p className="text-sm text-gray-600">No papers matched your search filter.</p>
+            <div className="py-8 text-center space-y-3">
+              <p className="text-sm text-gray-600 font-medium">
+                {onlySaved
+                  ? "No saved papers match the active filters."
+                  : "No papers matched your search or category filters."}
+              </p>
+              {onlySaved && (
+                <p className="text-xs text-gray-400 max-w-sm mx-auto">
+                  Click the ☆ Save button on any paper card to bookmark it for quick offline reference.
+                </p>
+              )}
               <button
-                onClick={() => { setSearch(""); setSelectedCat(null); }}
-                className="text-xs text-indigo-600 hover:underline font-medium"
+                type="button"
+                onClick={clearAllFilters}
+                className="text-xs text-indigo-600 hover:underline font-semibold"
               >
-                Clear filters
+                Clear all filters
               </button>
             </div>
           ) : (
@@ -342,6 +439,7 @@ export function DigestReader({
               </div>
               {onTrigger && (
                 <button
+                  type="button"
                   onClick={onTrigger}
                   disabled={triggering}
                   className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-40"
@@ -369,4 +467,5 @@ export function DigestReader({
     </div>
   );
 }
+
 export default DigestReader;
