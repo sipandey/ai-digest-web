@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useClerk } from "@clerk/nextjs";
 import BottomNav from "@/components/BottomNav";
 import { TIMEZONES, fmtRawOffset } from "@/lib/timezones";
+import IntelligencePillar from "./settings/IntelligencePillar";
+import SchedulePillar from "./settings/SchedulePillar";
+import ChannelsPillar from "./settings/ChannelsPillar";
+import AccountPillar from "./settings/AccountPillar";
+import { Tab, FeedbackStats } from "./settings/types";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -166,11 +171,21 @@ export default function SettingsView() {
 
   const [signingOut, setSigningOut] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<Tab>("intelligence");
+  const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
+  const [resettingFeedback, setResettingFeedback] = useState(false);
+  const [deliveryActive, setDeliveryActive] = useState(true);
+  const [disconnectingNotion, setDisconnectingNotion] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/users/config");
-        const data = await res.json();
+        const [configRes, feedbackRes] = await Promise.all([
+          fetch("/api/users/config"),
+          fetch("/api/users/feedback"),
+        ]);
+        const data = await configRes.json();
         const cfg: Config = data.config ?? data;
         const prof: UserProfile = data.profile ?? null;
         setConfig(cfg);
@@ -180,13 +195,19 @@ export default function SettingsView() {
         setDigestLens((cfg.digest_lens as DigestLens) ?? "builder");
         setTopics(cfg.topics ?? []);
         setDigestHour(cfg.digest_hour ?? 7);
-        // Number() coercion guards against Supabase returning NUMERIC columns
-        // as JSON strings (e.g. "5.50" instead of 5.5) during any migration window.
         setTimezoneOffset(Number(cfg.timezone_offset ?? 0));
+        setDeliveryActive(cfg.active !== false);
         setEmailDigestEnabled(Boolean(cfg.email_digest_enabled));
         setDeliveryEmail(cfg.delivery_email ?? prof?.email ?? "");
         setWebhookUrl(cfg.webhook_url ?? "");
         setWebhookPlatform(cfg.webhook_platform ?? "slack");
+
+        if (feedbackRes.ok) {
+          const feedbackData = await feedbackRes.json();
+          if (feedbackData.stats) {
+            setFeedbackStats(feedbackData.stats);
+          }
+        }
       } finally {
         setLoading(false);
       }
@@ -287,35 +308,57 @@ export default function SettingsView() {
     }
   }
 
-  async function saveChannels() {
-    setSavingChannels(true);
+  async function handleResetFeedback() {
+    setResettingFeedback(true);
     try {
-      const ok = await patchConfig({
-        email_digest_enabled: emailDigestEnabled,
-        delivery_email: deliveryEmail,
-        webhook_url: webhookUrl,
-        webhook_platform: webhookPlatform,
-      });
-      if (ok) {
-        setConfig((c) =>
-          c
-            ? {
-                ...c,
-                email_digest_enabled: emailDigestEnabled,
-                delivery_email: deliveryEmail,
-                webhook_url: webhookUrl,
-                webhook_platform: webhookPlatform,
-              }
-            : c
-        );
-        showToast("Channels saved", "success");
+      const res = await fetch("/api/users/feedback?all=true", { method: "DELETE" });
+      if (res.ok) {
+        setFeedbackStats({ total: 0, more: 0, less: 0 });
+        showToast("AI memory preferences reset", "success");
       } else {
-        showToast("Save failed — please check fields.", "error");
+        showToast("Failed to reset feedback", "error");
       }
     } catch {
       showToast("Network error — please try again.", "error");
     } finally {
-      setSavingChannels(false);
+      setResettingFeedback(false);
+    }
+  }
+
+  async function handleSaveNotion(token: string, dbId: string): Promise<boolean> {
+    setSavingNotion(true);
+    try {
+      const ok = await patchConfig({ notion_token: token, notion_database_id: dbId, notion_connected: true });
+      if (ok) {
+        setConfig((c) => (c ? { ...c, notion_connected: true, notion_database_id: dbId } : c));
+        showToast("Notion workspace connected", "success");
+        return true;
+      } else {
+        showToast("Save failed — check credentials.", "error");
+        return false;
+      }
+    } catch {
+      showToast("Network error — please try again.", "error");
+      return false;
+    } finally {
+      setSavingNotion(false);
+    }
+  }
+
+  async function handleDisconnectNotion() {
+    setDisconnectingNotion(true);
+    try {
+      const ok = await patchConfig({ disconnectNotion: true });
+      if (ok) {
+        setConfig((c) => (c ? { ...c, notion_connected: false, notion_database_id: null } : c));
+        showToast("Notion workspace disconnected", "success");
+      } else {
+        showToast("Failed to disconnect Notion.", "error");
+      }
+    } catch {
+      showToast("Network error — please try again.", "error");
+    } finally {
+      setDisconnectingNotion(false);
     }
   }
 
@@ -365,286 +408,84 @@ export default function SettingsView() {
           <h1 className="text-2xl font-bold text-[#14141e]">Settings</h1>
         </div>
 
-        {/* ── RESEARCH PROFILE ───────────────────────────────────────────── */}
-        <SectionCard heading="Research profile">
-          <div className="space-y-6">
+        {/* ── 4-Pillar Tabs Navigation ─────────────────────────────────────── */}
+        <div className="flex border-b border-gray-200 overflow-x-auto no-scrollbar gap-2 sm:gap-4">
+          {[
+            { id: "intelligence", label: "🧠 Intelligence" },
+            { id: "schedule", label: "⏰ Schedule" },
+            { id: "channels", label: "📡 Channels" },
+            { id: "account", label: "👤 Account" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as Tab)}
+              className={`pb-3 px-3 text-sm font-semibold whitespace-nowrap border-b-2 transition-all cursor-pointer ${
+                activeTab === tab.id
+                  ? "border-indigo-600 text-indigo-600"
+                  : "border-transparent text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                What you&apos;re building or learning
-              </label>
-              <textarea
-                rows={4}
-                value={profileDesc}
-                onChange={(e) => setProfileDesc(e.target.value)}
-                placeholder="e.g. I'm building a customer support chatbot using RAG. I have web dev experience and I'm learning AI."
-                className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none resize-none transition-colors"
-              />
-            </div>
+        {/* Pillars Content */}
+        {activeTab === "intelligence" && (
+          <IntelligencePillar
+            digestLens={digestLens}
+            setDigestLens={setDigestLens}
+            topics={topics}
+            setTopics={setTopics}
+            profileDesc={profileDesc}
+            setProfileDesc={setProfileDesc}
+            experienceLevel={experienceLevel}
+            setExperienceLevel={setExperienceLevel}
+            feedbackStats={feedbackStats}
+            onResetFeedback={handleResetFeedback}
+            resettingFeedback={resettingFeedback}
+          />
+        )}
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                Digest Lens
-              </label>
-              <p className="text-xs text-gray-500 mb-3">
-                How papers are scored and summarized for your daily workflow.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {DIGEST_LENSES.map(({ value, label, sub, icon }) => (
-                  <label
-                    key={value}
-                    className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
-                      digestLens === value
-                        ? "border-indigo-600 bg-indigo-50/60 shadow-xs ring-1 ring-indigo-500/20"
-                        : "border-gray-200 hover:border-gray-300 bg-gray-50/40"
-                    }`}
-                  >
-                    <span className="text-xl shrink-0 mt-0.5" role="img" aria-label={label}>{icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-[#14141e]">{label}</p>
-                      <p className="text-xs text-gray-500 leading-snug mt-0.5">{sub}</p>
-                    </div>
-                    <input
-                      type="radio"
-                      name="digestLens"
-                      value={value}
-                      checked={digestLens === value}
-                      onChange={() => setDigestLens(value)}
-                      className="sr-only"
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
+        {activeTab === "schedule" && (
+          <SchedulePillar
+            deliveryActive={deliveryActive}
+            setDeliveryActive={setDeliveryActive}
+            digestHour={digestHour}
+            setDigestHour={setDigestHour}
+            timezoneOffset={timezoneOffset}
+            setTimezoneOffset={setTimezoneOffset}
+          />
+        )}
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                Experience level
-              </label>
-              <div className="space-y-2">
-                {EXPERIENCE_LEVELS.map(({ value, label, sub }) => (
-                  <label
-                    key={value}
-                    className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${
-                      experienceLevel === value
-                        ? "border-indigo-400 bg-indigo-50"
-                        : "border-gray-200 hover:border-gray-300 bg-gray-50/50"
-                    }`}
-                  >
-                    <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
-                      experienceLevel === value ? "border-indigo-500" : "border-gray-300"
-                    }`}>
-                      {experienceLevel === value && (
-                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[#14141e]">{label}</p>
-                      <p className="text-xs text-gray-400">{sub}</p>
-                    </div>
-                    <input
-                      type="radio"
-                      name="experienceLevel"
-                      value={value}
-                      checked={experienceLevel === value}
-                      onChange={() => setExperienceLevel(value)}
-                      className="sr-only"
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
+        {activeTab === "channels" && (
+          <ChannelsPillar
+            config={config}
+            emailDigestEnabled={emailDigestEnabled}
+            setEmailDigestEnabled={setEmailDigestEnabled}
+            deliveryEmail={deliveryEmail}
+            setDeliveryEmail={setDeliveryEmail}
+            webhookUrl={webhookUrl}
+            setWebhookUrl={setWebhookUrl}
+            webhookPlatform={webhookPlatform}
+            setWebhookPlatform={setWebhookPlatform}
+            onSaveNotion={handleSaveNotion}
+            onDisconnectNotion={handleDisconnectNotion}
+            savingNotion={savingNotion}
+            disconnectingNotion={disconnectingNotion}
+          />
+        )}
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Topics
-              </label>
-              <div className="flex gap-2 mb-1.5">
-                <input
-                  type="text"
-                  value={topicInput}
-                  onChange={(e) => { setTopicInput(e.target.value); setTopicError(""); }}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopic(topicInput); } }}
-                  placeholder="Add a topic"
-                  disabled={topics.length >= 5}
-                  className="flex-1 bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none disabled:opacity-40 transition-colors"
-                />
-                <button
-                  onClick={() => addTopic(topicInput)}
-                  disabled={topics.length >= 5}
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors shrink-0"
-                >
-                  Add
-                </button>
-              </div>
-              {topicError && <p className="text-xs text-red-500 mb-2">{topicError}</p>}
-              {topics.length >= 5 && (
-                <p className="text-xs text-amber-600 mb-2">5 topics maximum</p>
-              )}
-              {topics.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {topics.map((t) => (
-                    <span
-                      key={t}
-                      className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm px-3 py-1.5 rounded-full"
-                    >
-                      {t}
-                      <button
-                        onClick={() => removeTopic(t)}
-                        aria-label={`Remove ${t}`}
-                        className="text-indigo-400 hover:text-indigo-700 leading-none ml-0.5"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="pt-1">
-              <SaveButton loading={savingProfile} onClick={saveProfile} label="Save profile" />
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* ── DELIVERY SETTINGS ──────────────────────────────────────────── */}
-        <SectionCard heading="Digest delivery">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Delivery time
-              </label>
-              <select
-                value={digestHour}
-                onChange={(e) => setDigestHour(Number(e.target.value))}
-                className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] focus:outline-none transition-colors"
-              >
-                {Array.from({ length: 24 }, (_, h) => (
-                  <option key={h} value={h}>{formatHour(h)}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Timezone
-              </label>
-              <select
-                value={timezoneOffset}
-                onChange={(e) => setTimezoneOffset(Number(e.target.value))}
-                className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] focus:outline-none transition-colors"
-              >
-                {TIMEZONES.map((tz) => (
-                  <option key={tz.offset} value={tz.offset}>{tz.label}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Delivery confirmation hint */}
-            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-indigo-400 shrink-0">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
-              </svg>
-              <p className="text-xs text-indigo-700">
-                Your digest will be delivered at{" "}
-                <span className="font-semibold">{formatHour(digestHour)}</span>
-                {" "}
-                <span className="text-indigo-500">({fmtRawOffset(timezoneOffset)})</span>
-                {" "}each day
-              </p>
-            </div>
-
-            <div className="pt-1">
-              <SaveButton loading={savingDelivery} onClick={saveDelivery} label="Save delivery settings" />
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* ── CHANNELS & INTEGRATIONS ────────────────────────────────────── */}
-        <SectionCard heading="Channels & Integrations">
-          <div className="space-y-6">
-            {/* HTML Email Digest */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-[#14141e]">Daily Email Digest</h3>
-                  <p className="text-xs text-gray-400">Receive morning research briefing in your inbox</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEmailDigestEnabled(!emailDigestEnabled)}
-                  className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
-                    emailDigestEnabled ? "bg-indigo-600" : "bg-gray-300"
-                  }`}
-                >
-                  <div
-                    className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
-                      emailDigestEnabled ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {emailDigestEnabled && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                    Delivery Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={deliveryEmail}
-                    onChange={(e) => setDeliveryEmail(e.target.value)}
-                    placeholder="you@domain.com"
-                    className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-sm text-[#14141e] focus:outline-none transition-colors"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-gray-100 pt-5 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-[#14141e]">Team Chat Webhook</h3>
-                <p className="text-xs text-gray-400">Publish daily digest to Slack or Discord channels</p>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                {(["slack", "discord", "generic"] as const).map((plat) => (
-                  <button
-                    key={plat}
-                    type="button"
-                    onClick={() => setWebhookPlatform(plat)}
-                    className={`py-2 px-3 rounded-xl border text-xs font-medium capitalize transition-colors ${
-                      webhookPlatform === plat
-                        ? "border-indigo-600 bg-indigo-50 text-indigo-700 font-semibold"
-                        : "border-gray-200 text-gray-600 hover:border-gray-300"
-                    }`}
-                  >
-                    {plat}
-                  </button>
-                ))}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Incoming Webhook URL
-                </label>
-                <input
-                  type="url"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/..."
-                  className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-sm font-mono text-[#14141e] placeholder:text-gray-300 focus:outline-none transition-colors"
-                />
-              </div>
-            </div>
-
-            <div className="pt-1">
-              <SaveButton loading={savingChannels} onClick={saveChannels} label="Save channel preferences" />
-            </div>
-          </div>
-        </SectionCard>
+        {activeTab === "account" && (
+          <AccountPillar
+            userProfile={userProfile}
+            onSignOut={handleSignOut}
+            signingOut={signingOut}
+          />
+        )}
 
         {/* ── NOTION WORKSPACE ───────────────────────────────────────────── */}
+        {false && (
         <SectionCard heading="Notion workspace">
           {config?.notion_connected && !showReconnect ? (
             <div className="space-y-4">
@@ -737,8 +578,10 @@ export default function SettingsView() {
             </div>
           )}
         </SectionCard>
+        )}
 
         {/* ── ACCOUNT ────────────────────────────────────────────────────── */}
+        {false && (
         <SectionCard heading="Account">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -760,6 +603,7 @@ export default function SettingsView() {
             </button>
           </div>
         </SectionCard>
+        )}
       </div>
 
       <BottomNav active="settings" />
