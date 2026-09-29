@@ -92,12 +92,14 @@ export function TodayStatusCard({
   triggering,
   dailyLimitReached,
   onTrigger,
+  triggerError,
 }: {
   run: PipelineRun | null;
   digestHour: number;
   triggering: boolean;
   dailyLimitReached: boolean;
   onTrigger: () => void;
+  triggerError?: string;
 }) {
   const status = run?.status ?? "none";
 
@@ -149,6 +151,9 @@ export function TodayStatusCard({
           </a>
         )}
       </div>
+      {triggerError && (
+        <p className="mt-2.5 text-xs text-red-500">{triggerError}</p>
+      )}
     </div>
   );
 }

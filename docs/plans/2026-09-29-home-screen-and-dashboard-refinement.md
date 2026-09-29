@@ -5,7 +5,7 @@ research_doc: "docs/research/2026-09-29-home-screen-streamlining-and-ux-audit.md
 branch: "feature/spm-audit-roadmap"
 status: "in-progress"
 phases_total: 5
-phases_completed: 0
+phases_completed: 1
 ---
 
 # Plan: Home Screen & Dashboard Streamlining (Landing Page & In-App Web Reader)
@@ -33,10 +33,10 @@ phases_completed: 0
 Eliminate code duplication between `web/components/DashboardView.tsx` and `web/components/dashboard/SidebarCards.tsx`, unify shared types, and establish the bookmarking persistence layer.
 
 ### Tasks
-- [ ] Create `web/lib/bookmarks.ts` helper for persisting, toggling, and querying bookmarked papers (localStorage + fallback).
-- [ ] Refactor `web/components/dashboard/SidebarCards.tsx` to export enhanced, modular sidebar cards (`TodayStatusCard`, `RunHistoryCard`, `ConfigSummaryCard`).
-- [ ] Remove duplicate inline implementations of `TodayCard`, `RunHistory`, and `ConfigSummary` from `web/components/DashboardView.tsx` (saving ~250 duplicate lines).
-- [ ] Add unit tests in `web/lib/__tests__/bookmarks.test.ts` for bookmark persistence logic.
+- [x] Create `web/lib/bookmarks.ts` helper for persisting, toggling, and querying bookmarked papers (localStorage + fallback).
+- [x] Refactor `web/components/dashboard/SidebarCards.tsx` to export enhanced, modular sidebar cards (`TodayStatusCard`, `RunHistoryCard`, `ConfigSummaryCard`).
+- [x] Remove duplicate inline implementations of `TodayCard`, `RunHistory`, and `ConfigSummary` from `web/components/DashboardView.tsx` (saving ~250 duplicate lines).
+- [x] Add unit tests in `web/lib/__tests__/bookmarks.test.ts` for bookmark persistence logic.
 
 #### Automated Verification:
 `npm run test:web`
