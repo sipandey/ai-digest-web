@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
 
       [encryptedToken, encryptedDatabaseId] = await Promise.all([
         encrypt(String(notionToken)),
-        encrypt(String(notionDatabaseId)),
+        encrypt(cleanNotionDatabaseId(String(notionDatabaseId))),
       ]);
       notionConnected = true;
     }
@@ -423,7 +423,7 @@ export async function PATCH(req: NextRequest) {
       updates["notion_token"] = await encrypt(updates["notion_token"] as string);
     }
     if (updatingDbId) {
-      updates["notion_database_id"] = await encrypt(updates["notion_database_id"] as string);
+      updates["notion_database_id"] = await encrypt(cleanNotionDatabaseId(plainDbId));
     }
 
     const { data, error } = await saveUserConfig(userId, updates);

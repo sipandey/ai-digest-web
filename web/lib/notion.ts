@@ -3,24 +3,47 @@
  */
 
 /**
- * Returns true if `id` is a valid Notion database/page ID — exactly 32 hex
- * characters after stripping hyphens (the standard UUID form Notion uses).
- *
- * Why this matters: the value is interpolated directly into a Notion API URL
- *   `https://api.notion.com/v1/databases/${id}`
- * A value like `../pages/abc123` or `abc?evil=1` would turn this server into
- * an open proxy for arbitrary Notion API endpoints (path traversal / SSRF).
- * Rejecting anything that isn't exactly 32 hex chars closes that entirely.
+ * Extracts a canonical 32-character hex ID from a raw string or full Notion URL.
+ * Handles:
+ *  - 32 hex chars: "35540c6e10f380d39ce1fbb025be5ee9"
+ *  - UUID format: "35540c6e-10f3-80d3-9ce1-fbb025be5ee9"
+ *  - Full Notion URLs: "https://app.notion.com/p/35540c6e10f380d39ce1fbb025be5ee9?v=..."
+ *  - Workspace URLs: "https://notion.so/workspace/Page-Title-35540c6e10f380d39ce1fbb025be5ee9?v=..."
  */
-export function isValidNotionDatabaseId(raw: string): boolean {
-  const clean = raw.replace(/-/g, "");
-  return /^[0-9a-f]{32}$/i.test(clean);
+export function extractNotionDatabaseId(raw: string): string | null {
+  if (!raw || typeof raw !== "string") return null;
+
+  const trimmed = raw.trim();
+
+  // 1. Direct 32-hex or hyphenated UUID check
+  const clean = trimmed.replace(/-/g, "");
+  if (/^[0-9a-f]{32}$/i.test(clean)) {
+    return clean.toLowerCase();
+  }
+
+  // 2. Full URL handling: remove query string (?v=...) and hash
+  const pathOnly = trimmed.split("?")[0].split("#")[0];
+
+  // Match 32 hex chars (optionally hyphenated) embedded at the end of the path segment
+  const match = pathOnly.match(/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}|[0-9a-f]{32})$/i);
+  if (match) {
+    return match[1].replace(/-/g, "").toLowerCase();
+  }
+
+  return null;
 }
 
 /**
- * Strip hyphens and return the canonical 32-char hex ID.
- * Always call isValidNotionDatabaseId() first.
+ * Returns true if `id` is a valid Notion database/page ID or URL containing a valid 32-hex ID.
+ */
+export function isValidNotionDatabaseId(raw: string): boolean {
+  return extractNotionDatabaseId(raw) !== null;
+}
+
+/**
+ * Strip hyphens/URL wrappers and return the canonical 32-char hex ID.
  */
 export function cleanNotionDatabaseId(raw: string): string {
-  return raw.replace(/-/g, "");
+  const extracted = extractNotionDatabaseId(raw);
+  return extracted ?? raw.replace(/-/g, "");
 }
