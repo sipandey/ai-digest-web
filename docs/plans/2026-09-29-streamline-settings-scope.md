@@ -3,9 +3,9 @@ title: "Streamline Settings Scope and Unified Intelligence Control Tower"
 date: "2026-09-29"
 research_doc: "docs/research/2026-09-29-settings-scope-and-streamlining-audit.md"
 branch: "feature/spm-audit-roadmap"
-status: "ready"
+status: "in-progress"
 phases_total: 4
-phases_completed: 0
+phases_completed: 1
 ---
 
 # Plan: Streamline Settings Scope & Unified Intelligence Control Tower
@@ -25,10 +25,10 @@ phases_completed: 0
 Enhance backend endpoints to support complete lifecycle management for channels, vacation mode, and feedback resets.
 
 ### Tasks
-- [ ] Update `web/app/api/users/config/route.ts` to support disconnecting Notion (`notion_connected = false`, nullifying tokens) and pausing digests (`active: boolean`).
-- [ ] Create `web/app/api/users/test-webhook/route.ts` to test Slack/Discord/generic webhooks with an immediate test payload.
-- [ ] Add `DELETE` or `POST /api/users/feedback/reset` (or query param) in `web/app/api/users/feedback/route.ts` to clear user feedback history.
-- [ ] Add Vitest tests validating these endpoint actions.
+- [x] Update `web/app/api/users/config/route.ts` to support disconnecting Notion (`notion_connected = false`, nullifying tokens) and pausing digests (`active: boolean`).
+- [x] Create `web/app/api/users/test-webhook/route.ts` to test Slack/Discord/generic webhooks with an immediate test payload.
+- [x] Add `DELETE` or `POST /api/users/feedback/reset` (or query param) in `web/app/api/users/feedback/route.ts` to clear user feedback history.
+- [x] Add Vitest tests validating these endpoint actions.
 
 #### Automated Verification:
 `npm run test:web`
