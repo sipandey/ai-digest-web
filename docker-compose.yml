@@ -10,6 +10,7 @@ services:
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      - PIPELINE_SERVICE_URL=http://pipeline:8000
     env_file:
       - .env
     volumes:
@@ -24,6 +25,10 @@ services:
       context: ./pipeline
       dockerfile: Dockerfile
     container_name: aidigest-pipeline
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    command: ["python", "server.py"]
     env_file:
       - .env
     volumes:

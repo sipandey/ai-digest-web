@@ -231,10 +231,20 @@ def _upsert_run(user_id: str, run_date: str, **fields) -> str:
             {"user_id": user_id, "run_date": run_date, **fields},
             on_conflict="user_id,run_date",
         )
-        .select("id")
         .execute()
     )
-    return result.data[0]["id"]
+    if result.data:
+        return result.data[0]["id"]
+
+    fetch = (
+        supabase.table("pipeline_runs")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("run_date", run_date)
+        .single()
+        .execute()
+    )
+    return fetch.data["id"]
 
 
 def _save_user_digest(

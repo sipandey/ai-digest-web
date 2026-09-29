@@ -129,6 +129,24 @@ async function spawnLocalPipeline(userId: string, runDate: string) {
   child.unref();
 }
 
+async function dispatchPipelineService(userId: string, runDate: string) {
+  const serviceUrl = process.env.PIPELINE_SERVICE_URL;
+  if (!serviceUrl) {
+    throw new Error("PIPELINE_SERVICE_URL not configured");
+  }
+
+  const response = await fetch(`${serviceUrl}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId, run_date: runDate }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Pipeline service error (${response.status}): ${text}`);
+  }
+}
+
 async function markRunFailed(runId: string, message: string) {
   await supabaseAdmin
     .from("pipeline_runs")
@@ -315,6 +333,8 @@ export async function POST() {
       try {
         if (triggerMode === "github_actions") {
           await dispatchGitHubWorkflow(user.id, today);
+        } else if (process.env.PIPELINE_SERVICE_URL) {
+          await dispatchPipelineService(user.id, today);
         } else {
           await spawnLocalPipeline(user.id, today);
         }
@@ -358,6 +378,8 @@ export async function POST() {
     try {
       if (triggerMode === "github_actions") {
         await dispatchGitHubWorkflow(user.id, today);
+      } else if (process.env.PIPELINE_SERVICE_URL) {
+        await dispatchPipelineService(user.id, today);
       } else {
         await spawnLocalPipeline(user.id, today);
       }
