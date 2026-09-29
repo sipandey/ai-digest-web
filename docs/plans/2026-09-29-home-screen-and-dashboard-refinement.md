@@ -95,14 +95,14 @@ Resolve the desktop layout imbalance where 85% of the right column is empty spac
 Bring the marketing front door into alignment with the modern multi-channel platform reality, eliminating outdated Notion-first messaging and recognizing returning users.
 
 ### Tasks
-- [ ] Update hero copy and value proposition in `web/app/page.tsx`:
+- [x] Update hero copy and value proposition in `web/app/page.tsx`:
   - Emphasize native in-app Web Reader, daily email briefings, team chat webhooks, and optional Notion exports.
   - Remove deprecated "Return with Notion token" subtext.
-- [ ] Add **Interactive Multi-Persona Lens Preview Widget**:
+- [x] Add **Interactive Multi-Persona Lens Preview Widget**:
   - Replace static RAPTOR card with an interactive preview card allowing visitors to click between `Builder Lens`, `Founder Lens`, and `Researcher Lens` to experience synthesis adaptation before signup.
-- [ ] Add **Smart Session Awareness**:
+- [x] Add **Smart Session Awareness**:
   - Check user session in `page.tsx` or client wrapper to display a personalized `Welcome back — Go to Dashboard →` banner for authenticated users.
-- [ ] Modernize "How It Works", "What You Get", and FAQ sections to reflect multi-channel delivery.
+- [x] Modernize "How It Works", "What You Get", and FAQ sections to reflect multi-channel delivery.
 
 #### Automated Verification:
 `npm run test:web`
