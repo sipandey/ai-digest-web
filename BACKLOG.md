@@ -313,3 +313,27 @@ Added `scoring_priorities: "scoring_priorities"` to the snake_case block in `ALL
 Created a 1200×630 PNG at `/public/og-image.png` — dark background with an indigo radial glow, gradient "AI Digest" headline (indigo-600 → violet-500, matching the landing page), tagline, description line, and domain. Both commented-out `images:` entries in `layout.tsx` are now active: the `openGraph.images` array (with explicit width/height/alt) and `twitter.images` array. Verified with Twitter Card Validator and Open Graph debugger at deploy time.
 
 ---
+
+### ~~U-3. In-App Web Digest Reader & Decoupled Notion Onboarding~~ ✅ Fixed
+**Files:** `web/components/digest/DigestReader.tsx`, `web/app/api/users/digests/route.ts`, `pipeline/pipeline.py`  
+Decoupled the pipeline from mandatory Notion credentials, enabling instant in-app digest generation and reading. Users without Notion can sign up and immediately read daily briefings in the web app.
+
+---
+
+### ~~U-4. Paper Bookmarking & Quick-Share (Takeaway Copy)~~ ✅ Fixed
+**Files:** `web/lib/bookmarks.ts`, `web/components/digest/PaperCard.tsx`, `web/components/digest/DigestReader.tsx`  
+Added 1-click paper bookmarking (`★ Saved`) backed by localStorage and window event bus, 1-click takeaway copying to clipboard (`📋 Copy` → `✓ Copied!`), and quick filters for Saved and 8.0+ Must-Reads.
+
+---
+
+### ~~U-5. Desktop Sticky Precision Command Strip & Value Realization Banner~~ ✅ Fixed
+**Files:** `web/components/DashboardView.tsx`, `web/components/dashboard/SidebarCards.tsx`  
+Replaced empty right column desktop dead space with a sticky precision command strip featuring a live Briefing Outline with jump links to papers, must-read tallies, run history, and a curated intelligence summary banner. Compacted mobile layout for above-the-fold visibility.
+
+---
+
+### ~~U-6. Public Landing Page Modernization & Smart Session Awareness~~ ✅ Fixed
+**Files:** `web/app/page.tsx`, `web/components/landing/InteractiveLensPreview.tsx`  
+Modernized landing copy to emphasize multi-channel delivery (Web Reader, email, webhooks, optional Notion). Added an interactive 3-way synthesis preview widget (Builder, Founder, Researcher lenses) and smart session awareness recognizing returning users.
+
+---

@@ -16,6 +16,12 @@ have to re-derive it from scratch by reading git history.
 
 <!-- Entries go below this line, newest first. -->
 
+### 2026-09-29 — Home screen and dashboard refinement (Bookmarking, Sticky Precision Strip, Multi-Persona Lens, Smart Session)
+
+**Decision:** Refactored the core reader and dashboard components (`PaperCard`, `DigestReader`, `DashboardView`, `SidebarCards`, `bookmarks.ts`) to introduce client-side bookmarking with an event bus, 1-click takeaway copying, and precision filters (Saved, Must-Read 8.0+). Transformed the desktop sidebar into a `sticky top-6` Precision Command Strip with clickable Briefing Outline links that smooth-scroll to papers. Modernized the public landing page (`page.tsx`, `InteractiveLensPreview.tsx`) with server-side session awareness (auto-recognizing returning users with `Welcome back` + `Go to Dashboard`) and an interactive 3-way synthesis preview widget (Builder, Founder, Researcher lenses).
+**Why:** Solved the 85% desktop dead space on long briefing feeds, removed confusing triple-run button conflicts, eliminated obsolete "Return with Notion token" copy, and provided immediate interactive value proof to first-time visitors before signup.
+**Rejected:** Backend-only bookmark persistence without offline caching; keeping static Notion screenshots on the landing page; keeping unsticky sidebar that disappears after the first paper card.
+
 ### 2026-09-29 — Decouple Notion gating to unlock In-App Web Reader as primary hub
 
 **Decision:** Removed legacy `if (!notionConnected)` check in `/api/pipeline/trigger/route.ts` and removed `.eq("notion_connected", True)` from `get_active_users()` in `pipeline/config.py`. Manual triggers and scheduled runs now generate digests into the database (`user_digests`) for all onboarded users, delivering to Notion only if credentials are connected. Added unit tests for the trigger route (`web/lib/__tests__/trigger.test.ts`) and pipeline active users retrieval (`pipeline/tests/test_config_pagination.py`).

@@ -2,59 +2,76 @@
 
 ## What this is
 
-AI Digest is a multi-tenant SaaS application that delivers a personalised daily summary of arXiv research papers directly to your Notion workspace. Each morning the pipeline fetches every paper published in the last 24 hours across ML, NLP, CV, and AI, shortlists the most relevant candidates using keyword overlap against your topics, scores and summarises them with GPT-4o-mini, and pushes a structured digest — with Problem, Approach, Results, Builder Takeaway, and Learning Path for every paper — into a Notion database you control.
+AI Digest is an intelligent research curation platform that delivers a personalised daily briefing of arXiv research papers. It features a native, distraction-free In-App Web Reader, daily email briefings, team webhook alerts (Slack/Discord), and optional sync to your Notion workspace. Each morning the pipeline fetches preprints published in the last 24 hours across ML, NLP, CV, and AI, shortlists the most relevant candidates using keyword overlap against your topics, scores and synthesises them with GPT-4o-mini across three executive persona lenses (Builder, Founder, and Researcher), and publishes structured takeaways, methodology, and prerequisites directly into your personal feed.
 
 Papers you have already received are permanently tracked and never repeated in a future digest. The system is free to use.
 
-The service is built for developers who want to stay current with AI research without drowning in the firehose. You describe what you're building in plain English, set your topics, and the system handles the rest. No arXiv categories, no manual filtering, no reading 40 abstracts before breakfast.
+The service is built for builders, founders, and researchers who want to stay at the cutting edge of AI without drowning in the firehose. You describe what you're building in plain English, choose your synthesis lens and delivery channels, and the system handles the rest. No arXiv categories, no manual filtering, no reading 40 abstracts before breakfast.
 
 ## Repository structure
 
 ```
 ai-digest-web/
-├── web/                        Next.js app (TypeScript + Tailwind + Clerk)
+├── web/                        Next.js 16 app (TypeScript + React 19 + Tailwind v4 + Clerk)
 │   ├── app/
 │   │   ├── layout.tsx                      Root layout — ClerkProvider + Inter font + OG metadata
-│   │   ├── page.tsx                        Public landing page
+│   │   ├── page.tsx                        Landing page — session awareness + interactive lens demo
 │   │   ├── privacy/page.tsx                Privacy policy (GDPR/CCPA-aligned)
 │   │   ├── terms/page.tsx                  Terms of Service
 │   │   ├── signup/[[...rest]]/page.tsx     Clerk SignUp component (catch-all)
 │   │   ├── login/[[...rest]]/page.tsx      Clerk SignIn component (catch-all)
 │   │   ├── setup/page.tsx                  Notion-first (guest) onboarding entry point
 │   │   ├── setup/verify/page.tsx           Guest re-authentication for returning users
-│   │   ├── dashboard/page.tsx              Daily digest status + run history (auto-refreshes while active)
-│   │   ├── onboarding/page.tsx             Multi-step setup for Clerk users (profile → topics → Notion)
-│   │   ├── settings/page.tsx               Edit profile, delivery time, timezone, Notion credentials
+│   │   ├── dashboard/page.tsx              Executive briefing reader + sticky precision command strip
+│   │   ├── onboarding/page.tsx             Multi-step setup (lens → topics → channels)
+│   │   ├── settings/page.tsx               Edit profile, lens, channels (email, webhooks, Notion)
 │   │   └── api/
 │   │       ├── auth/webhook/       Clerk webhook — creates/updates/hard-deletes users on Clerk events
 │   │       ├── auth/logout/        Guest session logout — revokes jti + clears __digest_sid cookie
 │   │       ├── guest/setup/        Notion-first signup — validates token, creates guest user + session
 │   │       ├── guest/verify/       Re-issue session cookie for returning guests (token re-auth)
 │   │       ├── users/config/       GET + POST + PATCH user config (atomic upsert, input validated)
+│   │       ├── users/digests/      GET daily digest archive with multi-date paper payloads
+│   │       ├── users/feedback/     GET + POST + DELETE paper feedback ratings (👍 / 👎 tuning)
 │   │       ├── users/runs/         GET last 7 pipeline runs
 │   │       ├── users/test-notion/  Validate Notion credentials without saving (rate-limited)
-│   │       └── pipeline/trigger/   Queue or retrigger a pipeline run (3 runs/day cap, system budget)
+│   │       ├── users/test-webhook/ Validate Slack/Discord webhooks with test payload
+│   │       └── pipeline/trigger/   Queue or retrigger pipeline run (manual run cap, system budget)
 │   ├── components/
-│   │   ├── BottomNav.tsx       Mobile bottom navigation bar
-│   │   ├── DashboardView.tsx   Dashboard client component with polling
-│   │   ├── ErrorBoundary.tsx   React error boundary for graceful error display
-│   │   ├── OnboardingForm.tsx  Multi-step onboarding client component (Clerk users)
-│   │   ├── SettingsView.tsx    Settings with live UTC delivery hint
-│   │   └── SetupForm.tsx       Notion-first guest onboarding client component
+│   │   ├── BottomNav.tsx           Mobile bottom navigation bar
+│   │   ├── DashboardView.tsx       Dashboard client component with primary header & value banner
+│   │   ├── ErrorBoundary.tsx       React error boundary for graceful error display
+│   │   ├── OnboardingForm.tsx      Multi-step onboarding client component (Clerk users)
+│   │   ├── SettingsView.tsx        Settings with multi-channel and multi-lens configuration
+│   │   ├── SetupForm.tsx           Notion-first guest onboarding client component
+│   │   ├── dashboard/
+│   │   │   └── SidebarCards.tsx    Sticky precision command strip, briefing outline, run history
+│   │   ├── digest/
+│   │   │   ├── DigestReader.tsx    Interactive briefing reader with date picker & precision filters
+│   │   │   └── PaperCard.tsx       Paper cards with 1-click bookmarks, takeaway copy, spotlight box
+│   │   └── landing/
+│   │       └── InteractiveLensPreview.tsx Interactive 3-way synthesis preview widget
 │   ├── lib/
 │   │   ├── auth.ts             Unified auth — resolves user from Clerk JWT or __digest_sid cookie
+│   │   ├── bookmarks.ts        Client-side paper bookmarking persistence (localStorage + event bus)
 │   │   ├── encryption.ts       AES-256-GCM encrypt/decrypt for Notion credentials (Web Crypto API)
 │   │   ├── guest-sessions.ts   Server-side session persistence + jti-based revocation
 │   │   ├── notion.ts           Notion database ID validation + normalisation helpers
 │   │   ├── ratelimit.ts        Upstash Redis sliding-window rate limiter (in-memory fallback for dev)
 │   │   ├── session.ts          HMAC-SHA256 signed session tokens with jti for guest users
 │   │   ├── supabase.ts         supabaseAdmin (service role) — server-only, never exposed to browser
-│   │   └── __tests__/          Vitest test suite (93 tests)
+│   │   └── __tests__/          Vitest test suite (124 tests across 10 files)
 │   │       ├── setup.ts
-│   │       ├── session.test.ts
+│   │       ├── bookmarks.test.ts
+│   │       ├── config.test.ts
+│   │       ├── digests.test.ts
+│   │       ├── feedback.test.ts
 │   │       ├── guest-sessions.test.ts
+│   │       ├── logout.test.ts
 │   │       ├── proxy.test.ts
-│   │       └── logout.test.ts
+│   │       ├── session.test.ts
+│   │       ├── trigger.test.ts
+│   │       └── webhook.test.ts
 │   ├── scripts/
 │   │   └── encrypt-existing-tokens.mjs   One-time backfill — encrypts plaintext Notion tokens in DB
 │   ├── public/
@@ -67,34 +84,29 @@ ai-digest-web/
 │   ├── encryption.py           Python AES-256-GCM decrypt for Notion credentials
 │   ├── fetcher.py              Shared arXiv fetch with papers_cache + concurrent-retry guard
 │   ├── ranker.py               Five-phase ranker: dedup → shortlist → cache → score → summarize
+│   ├── email_client.py         Responsive HTML email briefing delivery via Resend API
+│   ├── webhook_client.py       Multi-platform webhook delivery (Slack Block Kit, Discord Embeds)
 │   ├── notion_client.py        Per-user Notion page delivery
 │   ├── pipeline.py             Orchestrator — per-user scheduling, dedup, retry, JSON logging
 │   ├── pipeline_config.py      All tuneable constants in one place (PROMPT_VERSION, thresholds, etc.)
 │   ├── requirements.txt        Runtime Python dependencies
 │   ├── requirements-test.txt   Test-only dependencies (pytest, pytest-mock)
-│   └── tests/
+│   └── tests/                  Pytest test suite (200 tests across 7 files)
 │       ├── conftest.py                      Mocks supabase package; sets dummy env vars
 │       ├── test_ranker.py                   Ranker pure-function tests — sanitization, scoring, formatting
 │       ├── test_pipeline_scheduling.py      _is_user_due timezone math
 │       ├── test_fetcher.py                  Window, keyword group, concurrent-retry
 │       ├── test_config_pagination.py        get_active_users pagination
+│       ├── test_webhook_delivery.py         Slack / Discord / generic webhook payloads
 │       └── test_pipeline_deduplication.py   Cross-day dedup helpers
 ├── supabase/
-│   ├── schema.sql              Full Postgres schema (7 tables) with RLS policies
-│   └── migrations/
-│       ├── 20250504_add_user_delivered_papers.sql
-│       ├── 20250504_guest_auth.sql
-│       ├── 20250505_scoring_priorities_and_pipeline_runs.sql
-│       ├── 20250506_fix_notion_bot_id_constraint.sql
-│       ├── 20250506_pipeline_runs_trigger_count.sql
-│       ├── 20250508_timezone_offset_float.sql
-│       ├── 20250513_timezone_offset_float8.sql
-│       ├── 20250513_anon_scheduling_read.sql   ← anon key RLS for check job
-│       └── 20250513_guest_sessions.sql         ← server-side session revocation table
+│   ├── schema.sql              Full Postgres schema (9 tables) with RLS policies
+│   └── migrations/             Idempotent migration scripts
 ├── .github/
 │   └── workflows/
 │       ├── daily_pipeline.yml  Two-job gate: cheap check → heavy pipeline (runs every hour)
-│       └── ci.yml              pytest on every push/PR touching pipeline/
+│       └── ci.yml              Combined CI (Vitest on Node 22 + Pytest on Python 3.11)
+├── .agent-room/                Agent Room governance (CAR v2.6.0 seatbelts & decisions log)
 ├── .env.example                All environment variables documented
 └── README.md                   This file
 ```
@@ -263,17 +275,7 @@ cp ../.env.example .env.local
 npm run dev
 ```
 
-The app runs at `http://localhost:3000`.
-
-**Run the test suite:**
-
-```bash
-cd web
-# Requires Node 22 for vitest 4 (rolldown uses require() of ES modules)
-~/.nvm/versions/node/v22.x.x/bin/node node_modules/.bin/vitest run
-```
-
-93 tests covering session signing, guest session revocation, middleware route protection, and the logout CSRF guard.
+The web app runs at `http://localhost:3100`.
 
 ### 6. Running the pipeline locally
 
@@ -300,31 +302,36 @@ python pipeline.py
 | `PIPELINE_USE_BATCH` | `false` | Set to `true` to use OpenAI Batch API (50% cost, ~minutes latency) |
 | `PIPELINE_UTC_HOUR` | live clock | UTC hour passed from the `check` job to avoid clock-skew on startup |
 
-### 7. Running the test suites
+### 7. Running test suites and governance
 
-**Pipeline (Python):**
+**Combined Monorepo Test Suite:**
 
+From repository root:
 ```bash
-cd pipeline
-pip install -r requirements.txt -r requirements-test.txt
-python -m pytest tests/ -v
+npm test
 ```
+Runs both the Web Vitest suite (124 tests) and Pipeline Pytest suite (200 tests) — 324 tests total.
 
-160 tests across 5 files. No live credentials required — the test suite mocks the Supabase package and OpenAI client.
-
-**Web (TypeScript):**
-
+**Web Suite Only (TypeScript):**
 ```bash
-cd web
-# Node 22 required for vitest 4
-node node_modules/.bin/vitest run
+npm run test:web
+# or: npm test --prefix web
 ```
+124 tests across 10 test files covering session auth, guest sessions, bookmarks persistence, proxy middleware, logout CSRF, rate limits, feedback tuning, and triggers.
 
-93 tests across 4 files.
+**Pipeline Suite Only (Python):**
+```bash
+npm run test:pipeline
+# or: pytest pipeline/tests/ -v
+```
+200 tests across 7 test files covering ranker heuristics, multi-channel webhooks, timezone scheduling math, fetch caching, dedup, and config pagination.
 
-CI runs automatically on every push or PR that touches `pipeline/` via `.github/workflows/ci.yml`.
-
-> **Note:** The web vitest suite is not yet wired into CI (backlog item E-1). Run it locally before merging changes to `web/lib/` or `web/proxy.ts`.
+**Agent Room Governance (CAR v2.6.0):**
+```bash
+npm run validate   # Check room structure, skills frontmatter, and RPI artifacts
+npm run eval       # Run compliance evaluations (8/8 pass)
+npm run doctor     # Verify git lifecycle hooks and seatbelts
+```
 
 ### 8. GitHub Actions secrets
 
