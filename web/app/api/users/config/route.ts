@@ -68,19 +68,19 @@ async function prepareConfigForResponse(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { notion_token, notion_database_id, ...rest } = config;
 
-  let dbId: string | undefined;
+  let dbId: string | null = null;
   if (typeof notion_database_id === "string" && notion_database_id) {
     try {
       dbId = await decrypt(notion_database_id);
     } catch {
       // Decryption failure — omit rather than expose ciphertext
-      dbId = undefined;
+      dbId = null;
     }
   }
 
   return {
     ...rest,
-    ...(dbId !== undefined ? { notion_database_id: dbId } : {}),
+    notion_database_id: dbId,
   };
 }
 
@@ -233,8 +233,8 @@ export async function PATCH(req: NextRequest) {
       deliveryEmail: "delivery_email",
       webhookUrl: "webhook_url",
       webhookPlatform: "webhook_platform",
-      // `active` is intentionally excluded — account activation/deactivation
-      // must only be performed by an admin, never by the user themselves.
+      active: "active",
+      disconnectNotion: "disconnect_notion",
       notion_token: "notion_token",
       notion_database_id: "notion_database_id",
       notion_connected: "notion_connected",
@@ -256,12 +256,31 @@ export async function PATCH(req: NextRequest) {
       if (col && value !== undefined) updates[col] = value;
     }
 
+    const isDisconnectingNotion =
+      body.disconnectNotion === true ||
+      body.disconnect_notion === true ||
+      (updates["notion_connected"] === false && !body.notionToken && !body.notion_token);
+
+    if (isDisconnectingNotion) {
+      delete updates["disconnect_notion"];
+      updates["notion_connected"] = false;
+      updates["notion_token"] = null;
+      updates["notion_database_id"] = null;
+    }
+
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
     // ── Server-side validation ────────────────────────────────────────────────
     const validationErrors: string[] = [];
+
+    if ("active" in updates) {
+      const v = updates["active"];
+      if (typeof v !== "boolean") {
+        updates["active"] = Boolean(v);
+      }
+    }
 
     if ("profile_description" in updates) {
       const v = updates["profile_description"];
@@ -368,9 +387,13 @@ export async function PATCH(req: NextRequest) {
     // and decrypt the other from the DB so validateNotionCredentials() can
     // test both together against the Notion API.
     const updatingToken =
-      typeof updates["notion_token"] === "string" && !!updates["notion_token"];
+      !isDisconnectingNotion &&
+      typeof updates["notion_token"] === "string" &&
+      !!updates["notion_token"];
     const updatingDbId =
-      typeof updates["notion_database_id"] === "string" && !!updates["notion_database_id"];
+      !isDisconnectingNotion &&
+      typeof updates["notion_database_id"] === "string" &&
+      !!updates["notion_database_id"];
 
     if (updatingToken || updatingDbId) {
       let plainToken: string;

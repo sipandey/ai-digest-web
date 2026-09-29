@@ -36,7 +36,7 @@ const EXPERIENCE_LABELS: Record<string, string> = {
 };
 
 const STATUS_STYLES: Record<
-  PipelineRun["status"],
+  PipelineRun["status"] | "none",
   { pill: string; dot: string; label: string }
 > = {
   complete: {
@@ -63,6 +63,11 @@ const STATUS_STYLES: Record<
     pill: "bg-sky-100 text-sky-700 ring-1 ring-sky-200",
     dot: "bg-sky-400",
     label: "No matches",
+  },
+  none: {
+    pill: "bg-gray-100 text-gray-500",
+    dot: "bg-gray-300",
+    label: "Not run yet",
   },
 };
 

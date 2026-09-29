@@ -66,6 +66,11 @@ describe("/api/users/feedback", () => {
         "2401.0001": "more",
         "2401.0002": "less",
       });
+      expect(body.stats).toEqual({
+        total: 2,
+        more: 1,
+        less: 1,
+      });
     });
   });
 
@@ -114,6 +119,21 @@ describe("/api/users/feedback", () => {
   });
 
   describe("DELETE /api/users/feedback", () => {
+    it("resets all feedback when all=true parameter is passed", async () => {
+      mockGetAuthUserId.mockResolvedValue("user-123");
+      chain.eq.mockResolvedValue({ error: null });
+
+      const req = new NextRequest("http://localhost:3100/api/users/feedback?all=true", {
+        method: "DELETE",
+      });
+      const res = await DELETE(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.message).toContain("Feedback reset successfully");
+      expect(chain.eq).toHaveBeenCalledWith("user_id", "user-123");
+    });
+
     it("deletes feedback for a given arxiv_id", async () => {
       mockGetAuthUserId.mockResolvedValue("user-123");
       chain.eq.mockReturnValue({

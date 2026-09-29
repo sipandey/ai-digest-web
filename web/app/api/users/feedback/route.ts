@@ -19,13 +19,24 @@ export async function GET() {
   }
 
   const feedbackMap: Record<string, string> = {};
+  let moreCount = 0;
+  let lessCount = 0;
   for (const item of data || []) {
     if (item.arxiv_id && item.rating) {
       feedbackMap[item.arxiv_id] = item.rating;
+      if (item.rating === "more") moreCount++;
+      if (item.rating === "less") lessCount++;
     }
   }
 
-  return NextResponse.json({ feedback: feedbackMap });
+  return NextResponse.json({
+    feedback: feedbackMap,
+    stats: {
+      total: (data || []).length,
+      more: moreCount,
+      less: lessCount,
+    },
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -84,6 +95,20 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const arxivId = searchParams.get("arxiv_id");
+  const isReset = searchParams.get("all") === "true" || searchParams.get("reset") === "true";
+
+  if (isReset) {
+    const { error } = await supabaseAdmin
+      .from("paper_feedback")
+      .delete()
+      .eq("user_id", userId);
+
+    if (error) {
+      return NextResponse.json({ error: "Failed to reset feedback" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: "Feedback reset successfully" });
+  }
 
   if (!arxivId) {
     return NextResponse.json({ error: "Missing arxiv_id parameter" }, { status: 400 });
