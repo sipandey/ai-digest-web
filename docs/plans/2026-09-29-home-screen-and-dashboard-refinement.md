@@ -71,16 +71,16 @@ Upgrade the core reading experience inside `web/components/digest/` to empower q
 Resolve the desktop layout imbalance where 85% of the right column is empty space, eliminate redundant run buttons, and provide mobile-first ergonomics.
 
 ### Tasks
-- [ ] Resolve the "Triple Run Button" conflict:
+- [x] Resolve the "Triple Run Button" conflict:
   - Consolidate into a single, high-confidence Primary Action Header in `DashboardView.tsx` with live pipeline status and countdown.
   - Remove redundant trigger button from the sidebar card.
-- [ ] Add **Value Realization Banner** in dashboard header:
+- [x] Add **Value Realization Banner** in dashboard header:
   - Displays dynamic stats: *"Today's Briefing: X papers curated from Y arXiv papers scanned · Top score Z/10"*.
-- [ ] Transform the desktop sidebar into a **Sticky Precision Command Strip** (`sticky top-20`):
+- [x] Transform the desktop sidebar into a **Sticky Precision Command Strip** (`sticky top-20`):
   - **Triage Progress Ring**: Track and display reading progress ("X of Y papers reviewed").
   - **Paper Mini-Jump Outline**: Clickable paper titles for smooth 1-click scrolling to any paper in the feed.
   - **Relevance Tier Quick Toggles**: Fast access to 8.0+ must-reads.
-- [ ] Optimize mobile ergonomics:
+- [x] Optimize mobile ergonomics:
   - Compact header spacing so the first paper is visible above the fold on mobile viewports.
   - Smooth collapsible drawer for run history and setup on mobile screens.
 

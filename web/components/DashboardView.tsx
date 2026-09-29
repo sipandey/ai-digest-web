@@ -2,53 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import BottomNav from "@/components/BottomNav";
-import DigestReader, { Digest, DigestHistoryItem } from "./digest/DigestReader";
+import DigestReader, {
+  Digest,
+  DigestHistoryItem,
+  PipelineRun,
+} from "./digest/DigestReader";
 import {
   TodayStatusCard,
   RunHistory,
   ConfigSummary,
+  PrecisionCommandStrip,
+  UserConfig,
 } from "./dashboard/SidebarCards";
+import { BottomNav } from "./BottomNav";
 
-// ── types ─────────────────────────────────────────────────────────────────────
-
-type UserConfig = {
-  notion_connected: boolean;
-  topics: string[];
-  experience_level: string;
-  digest_lens?: string;
-  digest_hour: number;
-  timezone_offset: number;
+export type UserProfile = {
+  name?: string;
+  email?: string;
 };
 
-type PipelineRun = {
-  id: string;
-  run_date: string;
-  status: "pending" | "running" | "complete" | "failed" | "empty";
-  papers_fetched: number;
-  papers_passed: number;
-  top_score: number | null;
-  notion_page_url: string | null;
-  error_message: string | null;
-};
+const TERMINAL_STATUSES = new Set(["complete", "failed", "empty"]);
+const POLL_INTERVAL_MS = 4000;
 
-type UserProfile = {
-  name: string | null;
-};
-
-// ── constants ─────────────────────────────────────────────────────────────────
-
-const POLL_INTERVAL_MS = 15_000;
-const TERMINAL_STATUSES = new Set<PipelineRun["status"]>(["complete", "failed", "empty"]);
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function greeting(timezoneOffset: number): string {
-  const utcHour = new Date().getUTCHours();
-  const localHour = (utcHour + timezoneOffset + 24) % 24;
+function greeting(tzOffsetHours: number): string {
+  const utcNow = new Date();
+  const localHour = (utcNow.getUTCHours() + tzOffsetHours + 24) % 24;
   if (localHour < 12) return "Good morning";
-  if (localHour < 18) return "Good afternoon";
+  if (localHour < 17) return "Good afternoon";
   return "Good evening";
 }
 
@@ -56,16 +36,15 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// ── skeleton ──────────────────────────────────────────────────────────────────
-
-function Skeleton({ className }: { className: string }) {
-  return <div className={`bg-gray-200 rounded-xl animate-pulse ${className}`} />;
+function padDigestHour(h: number): string {
+  return String(h).padStart(2, "0") + ":00";
 }
 
-// ── main component ────────────────────────────────────────────────────────────
-
-export default function DashboardView() {
+export function DashboardView() {
   const router = useRouter();
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [config, setConfig] = useState<UserConfig | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -74,11 +53,9 @@ export default function DashboardView() {
   const [digestHistory, setDigestHistory] = useState<DigestHistoryItem[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(todayISO());
   const [loadingDigest, setLoadingDigest] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
-  const [triggerError, setTriggerError] = useState("");
-  const [dailyLimitReached, setDailyLimitReached] = useState(false);
+  const [triggerError, setTriggerError] = useState<string | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -89,13 +66,8 @@ export default function DashboardView() {
           fetch("/api/users/digests"),
         ]);
 
-        if (configRes.status === 404) {
-          router.replace("/onboarding");
-          return;
-        }
-
-        if (!configRes.ok) {
-          setLoadError("Could not load your dashboard. Please refresh the page.");
+        if (configRes.status === 401 || runsRes.status === 401) {
+          router.replace("/sign-in");
           return;
         }
 
@@ -168,75 +140,55 @@ export default function DashboardView() {
   }
 
   async function triggerRun() {
+    if (triggering) return;
     setTriggering(true);
-    setTriggerError("");
+    setTriggerError(null);
+
     try {
       const res = await fetch("/api/pipeline/trigger", { method: "POST" });
-      if (res.ok) {
-        const [runsRes, digestRes] = await Promise.all([
-          fetch("/api/users/runs"),
-          fetch("/api/users/digests"),
-        ]);
-        setRuns((await runsRes.json()).runs ?? []);
-        if (digestRes.ok) {
-          const digestData = await digestRes.json();
-          setDigest(digestData.digest ?? null);
-          setDigestHistory(digestData.history ?? []);
-          if (digestData.digest?.run_date) {
-            setSelectedDate(digestData.digest.run_date);
-          }
-        }
-      } else {
-        const data = await res.json();
-        if (data.dailyLimitReached) {
-          setDailyLimitReached(true);
-          setTriggerError(data.error ?? "Daily run limit reached.");
-        } else if (res.status === 429 && data.retryAfterSeconds) {
-          const mins = Math.ceil(data.retryAfterSeconds / 60);
-          setTriggerError(
-            `Too soon — please wait ${mins} minute${mins !== 1 ? "s" : ""} before running again.`
-          );
-        } else {
-          setTriggerError(data.error ?? "Trigger failed — please try again.");
-        }
+      const data = await res.json();
+
+      if (!res.ok) {
+        setTriggerError(data.error ?? "Failed to trigger pipeline");
+        return;
+      }
+
+      const runsRes = await fetch("/api/users/runs");
+      if (runsRes.ok) {
+        const runsData = await runsRes.json();
+        setRuns(runsData.runs ?? []);
       }
     } catch {
-      setTriggerError("Network error — please check your connection.");
+      setTriggerError("Network error. Please try again.");
     } finally {
       setTriggering(false);
     }
   }
 
-  // ── loading ────────────────────────────────────────────────────────────────
+  const manualRunsToday = runs.filter(
+    (r) => r.run_date === todayISO() && r.status !== "failed"
+  ).length;
+  const dailyLimitReached = manualRunsToday >= 1;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f4f4f8]">
-        <div className="max-w-5xl mx-auto px-4 pt-12 pb-24 space-y-4">
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-36 w-full" />
-          <Skeleton className="h-56 w-full" />
+      <div className="min-h-screen bg-[#f4f4f8] flex items-center justify-center p-4">
+        <div className="space-y-3 text-center">
+          <div className="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto" />
+          <p className="text-xs text-gray-500 font-medium">Loading your briefing…</p>
         </div>
-        <BottomNav active="dashboard" />
       </div>
     );
   }
 
-  // ── error ──────────────────────────────────────────────────────────────────
-
   if (loadError) {
     return (
-      <div className="min-h-screen bg-[#f4f4f8] flex flex-col items-center justify-center px-4">
-        <div className="bg-white border border-red-200 rounded-2xl p-8 max-w-sm text-center space-y-4">
-          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mx-auto">
-            <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-          </div>
-          <p className="text-sm font-medium text-[#14141e]">{loadError}</p>
+      <div className="min-h-screen bg-[#f4f4f8] flex items-center justify-center p-4">
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 max-w-sm w-full text-center space-y-3 shadow-xs">
+          <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button
             onClick={() => window.location.reload()}
-            className="text-sm text-indigo-600 hover:text-indigo-500 font-medium"
+            className="text-xs bg-indigo-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-indigo-500 transition-colors"
           >
             Refresh
           </button>
@@ -251,44 +203,96 @@ export default function DashboardView() {
   const activeRun = runs.find((r) => r.run_date === selectedDate) ?? null;
   const userName = profile?.name?.split(" ")[0] ?? null;
   const tz = Number(config?.timezone_offset ?? 0);
-
-  // ── render ─────────────────────────────────────────────────────────────────
+  const isRunning = todayRun?.status === "running" || todayRun?.status === "pending" || triggering;
 
   return (
     <div className="min-h-screen bg-[#f4f4f8]">
-      <div className="max-w-5xl mx-auto px-4 pt-10 pb-24">
-        {/* Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 pt-6 sm:pt-10 pb-24">
+        {/* ── High Confidence Primary Action Header ────────────────────── */}
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-1">
-              AI Digest · Web Reader
-            </p>
-            <h1 className="text-2xl font-bold text-[#14141e]">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                AI Digest · Executive Reader
+              </span>
+              <span className="text-xs text-gray-400">·</span>
+              <span className="text-xs text-gray-500 font-medium">
+                Scheduled daily at {padDigestHour(config?.digest_hour ?? 7)}
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#14141e] tracking-tight">
               {greeting(tz)}{userName ? `, ${userName}` : ""}.
             </h1>
           </div>
 
+          {/* Consolidated Single Run Action */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={triggerRun}
-              disabled={triggering || dailyLimitReached}
-              className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2"
-            >
-              {triggering ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Generating…
-                </>
-              ) : (
-                <>⚡ Run now</>
-              )}
-            </button>
+            {isRunning ? (
+              <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-xl text-xs font-semibold shadow-xs">
+                <span className="w-3 h-3 border-2 border-amber-400 border-t-amber-700 rounded-full animate-spin" />
+                <span>Pipeline running… scanning arXiv</span>
+              </div>
+            ) : dailyLimitReached ? (
+              <div className="text-right">
+                <button
+                  disabled
+                  className="bg-gray-100 text-gray-400 border border-gray-200 text-xs font-semibold px-4 py-2.5 rounded-xl cursor-not-allowed"
+                >
+                  ✓ Run completed today
+                </button>
+                <p className="text-[10px] text-gray-400 mt-1">Manual limit: 1/day</p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={triggerRun}
+                disabled={triggering}
+                className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 hover:shadow-indigo-200"
+              >
+                <span>⚡</span>
+                <span>Generate today&apos;s digest</span>
+              </button>
+            )}
           </div>
-        </div>
+        </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Digest Reader */}
-          <div className="lg:col-span-2 space-y-6">
+        {/* ── Value Realization Banner ─────────────────────────────────── */}
+        {digest && digest.papers.length > 0 && (
+          <section
+            aria-label="Daily Briefing Value Summary"
+            className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 shadow-sm mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-white/10 text-indigo-200 px-2 py-0.5 rounded">
+                  Curated Intelligence
+                </span>
+                <span className="text-xs text-indigo-200 font-medium">
+                  {activeRun?.papers_fetched
+                    ? `${activeRun.papers_fetched} arXiv papers scanned`
+                    : "Latest arXiv submission batch"}
+                </span>
+              </div>
+              <p className="text-sm sm:text-base font-semibold text-white">
+                {digest.papers.length} breakthrough papers selected for your{" "}
+                <span className="text-indigo-200 font-bold">{config?.digest_lens ?? "builder"}</span> focus
+              </p>
+            </div>
+            <div className="flex items-center gap-4 shrink-0">
+              <div className="bg-white/10 rounded-xl px-3.5 py-1.5 text-right">
+                <div className="text-xl sm:text-2xl font-black text-amber-300">
+                  {digest.top_score ? `${Math.round(digest.top_score * 10) / 10}★` : "—"}
+                </div>
+                <div className="text-[10px] text-indigo-200 uppercase font-bold tracking-wider">Top Match</div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── Main Two-Column Grid Layout ──────────────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* Main Digest Reader Feed */}
+          <main className="lg:col-span-2 space-y-6">
             <DigestReader
               digest={digest}
               digestHistory={digestHistory}
@@ -302,23 +306,37 @@ export default function DashboardView() {
               triggering={triggering}
               digestHour={config?.digest_hour ?? 7}
             />
-          </div>
+          </main>
 
-          {/* Right Sidebar */}
-          <div className="space-y-6">
-            <TodayStatusCard
-              run={todayRun}
-              digestHour={config?.digest_hour ?? 7}
-              triggering={triggering}
-              triggerError={triggerError}
-              dailyLimitReached={dailyLimitReached}
-              onTrigger={triggerRun}
-            />
+          {/* ── Sticky Precision Command Strip & Desktop Sidebar ────────── */}
+          <aside className="space-y-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pr-1 scrollbar-none">
+            {/* Quick Outline & Jump Navigator */}
+            <PrecisionCommandStrip papers={digest?.papers ?? []} />
 
-            <RunHistory runs={runs} />
+            {/* Mobile Collapsible Switch for History & Config */}
+            <div className="lg:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+                className="w-full text-xs font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl px-4 py-2.5 flex items-center justify-between transition-colors"
+              >
+                <span>Setup & Run History</span>
+                <span>{mobileSidebarOpen ? "▲" : "▼"}</span>
+              </button>
+            </div>
 
-            {config && <ConfigSummary config={config} />}
-          </div>
+            <div className={`${mobileSidebarOpen ? "block" : "hidden"} lg:block space-y-5`}>
+              <TodayStatusCard
+                run={todayRun}
+                digestHour={config?.digest_hour ?? 7}
+                triggerError={triggerError ?? undefined}
+              />
+
+              <RunHistory runs={runs} />
+
+              {config && <ConfigSummary config={config} />}
+            </div>
+          </aside>
         </div>
       </div>
 
@@ -326,3 +344,5 @@ export default function DashboardView() {
     </div>
   );
 }
+
+export default DashboardView;

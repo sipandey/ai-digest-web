@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Paper } from "../digest/PaperCard";
 
 export type PipelineRun = {
   id: string;
@@ -84,75 +85,135 @@ function padDigestHour(h: number): string {
   return String(h).padStart(2, "0") + ":00";
 }
 
+// ── PrecisionCommandStrip (Sticky Desktop Navigator) ──────────────────────────
+
+export function PrecisionCommandStrip({
+  papers,
+}: {
+  papers: Paper[];
+}) {
+  if (!papers || papers.length === 0) return null;
+
+  const mustReadCount = papers.filter((p) => p.score >= 8.0).length;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs space-y-3">
+      <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+        <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+          <span>⚡</span>
+          <span>Briefing Outline</span>
+        </h2>
+        <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+          {papers.length} papers
+        </span>
+      </div>
+
+      {mustReadCount > 0 && (
+        <div className="text-[11px] text-emerald-800 bg-emerald-50/80 border border-emerald-200 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+          <span className="font-medium">🔥 Must-Reads (8.0+):</span>
+          <span className="font-bold">{mustReadCount}</span>
+        </div>
+      )}
+
+      {/* Clickable Mini-Jump Paper Links */}
+      <div className="space-y-1 max-h-56 overflow-y-auto pr-1 text-xs">
+        {papers.map((p, idx) => (
+          <a
+            key={p.arxiv_id || idx}
+            href={`#paper-${p.arxiv_id}`}
+            className="block p-1.5 rounded-lg hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 transition-colors group"
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-[10px] text-gray-400 group-hover:text-indigo-500 font-bold shrink-0">
+                #{idx + 1}
+              </span>
+              <span
+                className={`text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
+                  p.score >= 8.5
+                    ? "bg-emerald-100 text-emerald-800"
+                    : p.score >= 7.5
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {Math.round(p.score * 10) / 10}★
+              </span>
+              <span className="truncate font-medium text-gray-800 group-hover:text-indigo-900">
+                {p.title}
+              </span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── TodayStatusCard ───────────────────────────────────────────────────────────
 
 export function TodayStatusCard({
   run,
   digestHour,
-  triggering,
-  dailyLimitReached,
-  onTrigger,
   triggerError,
 }: {
   run: PipelineRun | null;
   digestHour: number;
-  triggering: boolean;
-  dailyLimitReached: boolean;
-  onTrigger: () => void;
+  triggering?: boolean;
+  dailyLimitReached?: boolean;
+  onTrigger?: () => void;
   triggerError?: string;
 }) {
   const status = run?.status ?? "none";
-
-  const runNowBtn = dailyLimitReached ? (
-    <p className="text-xs text-amber-600 font-medium">Daily limit reached — resets tomorrow.</p>
-  ) : (
-    <button
-      onClick={onTrigger}
-      disabled={triggering}
-      className="border border-indigo-400 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 text-xs font-semibold px-4 py-2 rounded-xl transition-colors"
-    >
-      {triggering ? "Running…" : "Run now"}
-    </button>
-  );
-
   const style = STATUS_STYLES[status] ?? STATUS_STYLES.pending;
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-[#14141e]">Today&apos;s Run</h2>
+        <h2 className="text-sm font-semibold text-[#14141e]">Today&apos;s Run Status</h2>
         <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${style.pill}`}>
           {style.label}
         </span>
       </div>
 
-      <div className="space-y-2 mb-4 text-xs text-gray-500">
+      <div className="space-y-1.5 mb-3 text-xs text-gray-500">
         {status === "complete" ? (
-          <p>{run?.papers_passed} papers passed &middot; Top score: {run?.top_score ?? "—"}/10</p>
+          <div>
+            <p className="font-semibold text-gray-800">
+              {run?.papers_passed} papers curated
+              {run?.papers_fetched ? ` from ${run.papers_fetched} scanned` : ""}
+            </p>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Top match score: <strong className="text-indigo-600">{run?.top_score ?? "—"}/10</strong>
+            </p>
+          </div>
         ) : status === "running" ? (
-          <p className="animate-pulse">Generating your digest now…</p>
+          <p className="animate-pulse text-amber-700 font-medium">
+            Generating your briefing… scanning arXiv feed and running LLM evaluation.
+          </p>
         ) : status === "empty" ? (
-          <p>No papers crossed the threshold today.</p>
+          <p>No arXiv papers exceeded your match threshold today.</p>
         ) : (
-          <p>Scheduled daily at {padDigestHour(digestHour)} your time.</p>
+          <p>Automated digest runs daily at {padDigestHour(digestHour)} your local time.</p>
         )}
       </div>
 
-      <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
-        {runNowBtn}
-        {run?.notion_page_url && (
+      {run?.notion_page_url && (
+        <div className="pt-2.5 border-t border-gray-100 flex items-center justify-between">
+          <span className="text-xs text-gray-400">Export:</span>
           <a
             href={run.notion_page_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-medium text-indigo-600 hover:underline"
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-500 flex items-center gap-1"
           >
-            Notion page ↗
+            <span>Open in Notion</span>
+            <span>↗</span>
           </a>
-        )}
-      </div>
+        </div>
+      )}
+
       {triggerError && (
-        <p className="mt-2.5 text-xs text-red-500">{triggerError}</p>
+        <p className="mt-2 text-xs text-red-500">{triggerError}</p>
       )}
     </div>
   );
@@ -169,11 +230,11 @@ export function RunHistory({ runs }: { runs: PipelineRun[] }) {
         <h2 className="text-sm font-semibold text-[#14141e]">Recent Runs</h2>
       </div>
 
-      <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto">
+      <div className="divide-y divide-gray-100 max-h-56 overflow-y-auto">
         {runs.slice(0, 7).map((run) => {
           const style = STATUS_STYLES[run.status] ?? STATUS_STYLES.pending;
           return (
-            <div key={run.id} className="px-5 py-3 flex items-center justify-between text-xs">
+            <div key={run.id} className="px-5 py-2.5 flex items-center justify-between text-xs">
               <div>
                 <p className="font-medium text-[#14141e]">{formatRunDate(run.run_date)}</p>
                 <p className="text-gray-400 text-[11px]">
@@ -210,14 +271,14 @@ export function RunHistory({ runs }: { runs: PipelineRun[] }) {
 export function ConfigSummary({ config }: { config: UserConfig }) {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-[#14141e]">Your setup</h2>
+      <div className="flex items-center justify-between mb-3.5">
+        <h2 className="text-sm font-semibold text-[#14141e]">Your Setup</h2>
         <Link href="/settings" className="text-xs text-indigo-600 hover:text-indigo-500 font-medium">
           Edit →
         </Link>
       </div>
 
-      <div className="space-y-3.5">
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-gray-400">Lens</p>
           <p className="text-xs font-semibold text-indigo-700">
@@ -226,11 +287,11 @@ export function ConfigSummary({ config }: { config: UserConfig }) {
         </div>
 
         <div>
-          <p className="text-xs text-gray-400 mb-2">Topics</p>
+          <p className="text-xs text-gray-400 mb-1.5">Topics</p>
           <div className="flex flex-wrap gap-1.5">
             {config.topics?.length ? (
               config.topics.map((t) => (
-                <span key={t} className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-full">
+                <span key={t} className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-0.5 rounded-full font-medium">
                   {t}
                 </span>
               ))
