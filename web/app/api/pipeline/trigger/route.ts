@@ -180,7 +180,7 @@ export async function POST() {
     // Resolve user + config in one query
     const { data: user, error: userError } = await supabaseAdmin
       .from("users")
-      .select("id, user_configs(notion_connected, updated_at)")
+      .select("id, user_configs(id, updated_at)")
       .eq("id", userId)
       .single();
 
@@ -188,16 +188,15 @@ export async function POST() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const configs = user.user_configs as { notion_connected: boolean; updated_at: string | null }[];
-    const notionConnected = configs?.[0]?.notion_connected ?? false;
-    const configUpdatedAt = configs?.[0]?.updated_at ?? null;
-
-    if (!notionConnected) {
+    const configs = user.user_configs as { id: string; updated_at: string | null }[];
+    if (!configs || configs.length === 0) {
       return NextResponse.json(
-        { error: "Notion not connected — complete onboarding first" },
+        { error: "Please complete onboarding before triggering a digest" },
         { status: 400 }
       );
     }
+
+    const configUpdatedAt = configs[0]?.updated_at ?? null;
 
     const triggerMode = getTriggerMode();
 

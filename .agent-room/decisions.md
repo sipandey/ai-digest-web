@@ -16,6 +16,13 @@ have to re-derive it from scratch by reading git history.
 
 <!-- Entries go below this line, newest first. -->
 
+### 2026-09-29 — Decouple Notion gating to unlock In-App Web Reader as primary hub
+
+**Decision:** Removed legacy `if (!notionConnected)` check in `/api/pipeline/trigger/route.ts` and removed `.eq("notion_connected", True)` from `get_active_users()` in `pipeline/config.py`. Manual triggers and scheduled runs now generate digests into the database (`user_digests`) for all onboarded users, delivering to Notion only if credentials are connected. Added unit tests for the trigger route (`web/lib/__tests__/trigger.test.ts`) and pipeline active users retrieval (`pipeline/tests/test_config_pagination.py`).
+**Why:** Fixes the critical onboarding friction where users without Notion were blocked with `Notion not connected — complete onboarding first` when clicking "Run now", enabling immediate <30s time-to-value directly in the built-in Web Reader while preserving Notion as an optional export channel.
+**Rejected:** Requiring a mock Notion token for web-only users; bifurcating trigger endpoints into web-only vs notion-connected.
+
+
 ### 2026-09-28 — Multi-channel growth and personalization feedback loop
 
 **Decision:** Created `paper_feedback` table and `/api/users/feedback` endpoint enabling users to rate papers 👍 ("more like this") and 👎 ("less like this") directly on the in-app Web Reader. Incorporated user feedback categories into `ranker.py` and `pipeline.py` to boost relevant papers (+0.6) and penalize unwanted domains (-0.8). Extended `user_configs` and pipeline delivery with `webhook_client.py` (Slack Block Kit, Discord Embeds, generic webhooks) and `email_client.py` (responsive HTML email digest via Resend API), configurable in Settings.
