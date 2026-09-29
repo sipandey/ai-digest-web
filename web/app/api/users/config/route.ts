@@ -452,11 +452,15 @@ export async function PATCH(req: NextRequest) {
     let configData: Record<string, unknown> = {};
 
     if (hasConfigUpdates) {
+      console.log("[PATCH config] updates to upsert:", JSON.stringify(updates));
       const { data, error } = await saveUserConfig(userId, updates);
 
       if (error) {
-        console.error("Update user_configs error:", error);
-        return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
+        console.error("Update user_configs error:", JSON.stringify(error));
+        return NextResponse.json(
+          { error: "Failed to update config", detail: error.message, code: error.code },
+          { status: 500 },
+        );
       }
 
       configData = data as Record<string, unknown>;
@@ -478,7 +482,8 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ config: await prepareConfigForResponse(configData) });
   } catch (err) {
-    console.error("PATCH /api/users/config failed:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("PATCH /api/users/config failed:", msg);
+    return NextResponse.json({ error: "Internal server error", detail: msg }, { status: 500 });
   }
 }

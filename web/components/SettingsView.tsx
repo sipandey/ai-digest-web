@@ -290,7 +290,7 @@ export default function SettingsView() {
         </div>
 
         {/* 4-Pillar Tabs */}
-        <div className="flex border-b border-gray-200 overflow-x-auto no-scrollbar gap-2 sm:gap-4">
+        <div className="flex border-b border-gray-200 overflow-x-auto no-scrollbar">
           {[
             { id: "intelligence", label: "🧠 Intelligence" },
             { id: "schedule", label: "⏰ Schedule" },
@@ -300,7 +300,7 @@ export default function SettingsView() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as Tab)}
-              className={`pb-3 px-3 text-sm font-semibold whitespace-nowrap border-b-2 transition-all cursor-pointer ${
+              className={`pb-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold whitespace-nowrap border-b-2 transition-all cursor-pointer flex-1 text-center ${
                 activeTab === tab.id
                   ? "border-indigo-600 text-indigo-600"
                   : "border-transparent text-gray-500 hover:text-gray-800"
@@ -366,9 +366,9 @@ export default function SettingsView() {
         )}
       </div>
 
-      {/* Unified Sticky Save Bar */}
+      {/* Unified Sticky Save Bar — sits above bottom nav (nav ~56px + label ~14px = ~70px) */}
       {isDirty && (
-        <div className="fixed bottom-20 sm:bottom-8 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed bottom-28 sm:bottom-8 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
           <div className="bg-[#14141e] text-white p-4 rounded-2xl shadow-2xl border border-gray-800 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />

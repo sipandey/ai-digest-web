@@ -107,41 +107,55 @@ export default function ChannelsPillar({
 
   return (
     <div className="space-y-6">
-      {/* Core Web Dashboard */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs flex items-center justify-between">
-        <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-lg">
+      {/* ── In-App Web Dashboard (Core Hub) ─────────────────────────────── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5 min-w-0">
+          {/* Pin emoji size so it doesn't blow out the rounded container */}
+          <div
+            className="w-10 h-10 shrink-0 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center"
+            style={{ fontSize: "18px" }}
+          >
             💻
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-[#14141e]">In-App Web Dashboard</h2>
-              <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Core Hub</span>
-            </div>
-            <p className="text-xs text-gray-500 mt-0.5">Read papers, search takeaways, and rate recommendations anytime.</p>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[#14141e]">In-App Web Dashboard</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Read papers, search takeaways, and rate recommendations anytime.
+            </p>
           </div>
         </div>
-        <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" /> Always Active
-        </span>
+        {/* Right side: badge stacked above status — avoids collision on mobile */}
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full whitespace-nowrap">
+            Core Hub
+          </span>
+          <span className="text-xs text-emerald-600 font-medium flex items-center gap-1 whitespace-nowrap">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" /> Always Active
+          </span>
+        </div>
       </div>
 
-      {/* Daily Email Digest */}
+      {/* ── Daily Email Digest ───────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-lg">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div
+              className="w-10 h-10 shrink-0 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center"
+              style={{ fontSize: "18px" }}
+            >
               📬
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-sm font-semibold text-[#14141e]">Daily Email Digest</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Morning research briefing delivered directly to your inbox.</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Morning research briefing delivered directly to your inbox.
+              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setEmailDigestEnabled(!emailDigestEnabled)}
-            className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+            className={`w-12 h-6 shrink-0 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
               emailDigestEnabled ? "bg-indigo-600" : "bg-gray-300"
             }`}
           >
@@ -169,15 +183,20 @@ export default function ChannelsPillar({
         )}
       </div>
 
-      {/* Slack / Discord Webhook */}
+      {/* ── Team Chat Webhook ────────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-lg">
+          <div
+            className="w-10 h-10 shrink-0 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center"
+            style={{ fontSize: "18px" }}
+          >
             💬
           </div>
           <div>
             <h2 className="text-sm font-semibold text-[#14141e]">Team Chat Webhook</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Automatically publish formatted daily digests to Slack or Discord channels.</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Automatically publish formatted daily digests to Slack or Discord channels.
+            </p>
           </div>
         </div>
 
@@ -212,7 +231,7 @@ export default function ChannelsPillar({
               type="url"
               value={webhookUrl}
               onChange={(e) => { setWebhookUrl(e.target.value); setWebhookTestStatus("idle"); }}
-              placeholder="https://hooks.slack.com/services/... or https://discord.com/api/webhooks/..."
+              placeholder="https://hooks.slack.com/services/..."
               className="flex-1 bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-2.5 text-xs font-mono text-[#14141e] placeholder:text-gray-400 focus:outline-none transition-colors"
             />
             <button
@@ -235,24 +254,29 @@ export default function ChannelsPillar({
         </div>
       </div>
 
-      {/* Notion Workspace */}
+      {/* ── Notion Workspace ─────────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-lg">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div
+              className="w-10 h-10 shrink-0 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center"
+              style={{ fontSize: "18px" }}
+            >
               📓
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-sm font-semibold text-[#14141e]">Notion Workspace</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Export structured digest pages directly into your Notion database.</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Export structured digest pages directly into your Notion database.
+              </p>
             </div>
           </div>
           {config?.notion_connected ? (
-            <span className="text-xs font-semibold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+            <span className="text-xs font-semibold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500" /> Connected
             </span>
           ) : (
-            <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full">
+            <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full shrink-0">
               Not Connected
             </span>
           )}
