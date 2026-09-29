@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-export default function BottomNav({ active }: { active: "dashboard" | "settings" }) {
+export function BottomNav({ active }: { active: "dashboard" | "settings" }) {
   return (
     <nav className="fixed bottom-0 inset-x-0 z-50 h-16 bg-white/95 backdrop-blur border-t border-gray-200 flex">
       <Link
@@ -31,3 +31,5 @@ export default function BottomNav({ active }: { active: "dashboard" | "settings"
     </nav>
   );
 }
+
+export default BottomNav;

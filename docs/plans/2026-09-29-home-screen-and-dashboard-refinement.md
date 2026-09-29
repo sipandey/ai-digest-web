@@ -115,10 +115,11 @@ Bring the marketing front door into alignment with the modern multi-channel plat
 Ensure 100% test coverage pass rate, Next.js production build completion, and full CAR compliance.
 
 ### Tasks
-- [ ] Run full test suite: `npm test` (Vitest + Pytest).
-- [ ] Run Next.js production build: `npm run build --prefix web`.
-- [ ] Verify live rendering on port 3100 via Chrome DevTools MCP (desktop and mobile viewports).
-- [ ] Run CAR room governance: `npm run validate && npm run eval && npm run doctor`.
+- [x] Run full test suite: `npm test` (Vitest + Pytest).
+- [x] Run Next.js production build: `npm run build --prefix web`.
+- [x] Verify live rendering on port 3100 via Chrome DevTools MCP (desktop and mobile viewports).
+- [x] Run CAR room governance: `npm run validate && npm run eval && npm run doctor`.
 
 #### Automated Verification:
 `npm test && npm run validate`
+
