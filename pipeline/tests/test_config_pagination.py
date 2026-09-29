@@ -120,3 +120,20 @@ class TestGetActiveUsersPagination:
     def test_empty_database_returns_empty_list(self, mock_sb):
         mock_sb.table.return_value = _mock_query([[]])
         assert get_active_users() == []
+
+    @patch("config.supabase")
+    def test_active_user_without_notion_included(self, mock_sb):
+        """Users with notion_connected=False must still be returned as long as active=True."""
+        web_only_user = {
+            "user_id": "web_only_user",
+            "active": True,
+            "notion_connected": False,
+            "users": {"id": "web_only_user", "active": True, "email": "web@example.com"},
+        }
+        mock_sb.table.return_value = _mock_query([[web_only_user]])
+
+        result = get_active_users()
+
+        assert len(result) == 1
+        assert result[0]["user_id"] == "web_only_user"
+        assert result[0]["notion_connected"] is False

@@ -33,7 +33,7 @@ def _decrypt_user_row(row: dict) -> dict:
 
 
 def get_active_users(user_id: Optional[str] = None) -> list[dict]:
-    """Return user_config rows for all active users with Notion connected.
+    """Return user_config rows for all active users.
 
     Joins user_configs → users. Filters out deactivated parent accounts.
     Paginates in chunks of _PAGE_SIZE so the result is never silently
@@ -45,7 +45,6 @@ def get_active_users(user_id: Optional[str] = None) -> list[dict]:
             supabase.table("user_configs")
             .select("*, users!inner(id, clerk_id, email, name, tier, active)")
             .eq("active", True)
-            .eq("notion_connected", True)
             .eq("user_id", user_id)
             .execute()
         )
@@ -62,7 +61,6 @@ def get_active_users(user_id: Optional[str] = None) -> list[dict]:
             supabase.table("user_configs")
             .select("*, users!inner(id, clerk_id, email, name, tier, active)")
             .eq("active", True)
-            .eq("notion_connected", True)
             .range(offset, offset + _PAGE_SIZE - 1)
             .execute()
         )

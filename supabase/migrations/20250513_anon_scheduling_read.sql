@@ -23,6 +23,7 @@ GRANT SELECT (digest_hour, timezone_offset)
 -- 2. RLS policy: anon sees only rows for active, notion-connected users.
 --    Combined with the column grant above, this is the minimum surface needed
 --    for the jq scheduling gate to count due users.
+DROP POLICY IF EXISTS user_configs_anon_scheduling_read ON user_configs;
 CREATE POLICY user_configs_anon_scheduling_read
   ON user_configs
   FOR SELECT

@@ -1,7 +1,7 @@
 # AI Digest Web — Manual Testing Guide
 
 Complete end-to-end testing guide for the developer before inviting beta users.
-All tests assume macOS, repo checked out locally, dev server at `localhost:3000`.
+All tests assume macOS, repo checked out locally, dev server at `localhost:3100`.
 
 ---
 

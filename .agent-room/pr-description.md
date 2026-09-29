@@ -1,35 +1,30 @@
 # Pull Request Description
 
 ## Overview
-* **Session Log Reference:** [2026-09-28-17-31-integrate-agent-room.md](.agent-room/sessions/2026-09-28-17-31-integrate-agent-room.md)
-* **Date:** 2026-09-28 12:01
+* **Session Log Reference:** [2026-09-28-17-55-spm-audit-and-roadmap.md](.agent-room/sessions/2026-09-28-17-55-spm-audit-and-roadmap.md)
+* **Date:** 2026-09-28 12:25
 * **Agent:** Siddharth Pandey
 * **Classification:** Enhancement
 
 ## Goal
-Integrate create-agent-room v2.6.0 governance framework and configure strict git identity
+SPM audit of downtime, deconstruction of dual-path architecture, and unified product roadmap following CAR RPI guidelines
 
 ## Changes Implemented
-- Created: .agent-room.json, .agent-room/, .claude/, .clinerules, .codexrules, .cursor/, .github/copilot-instructions.md, .github/workflows/agent-room-validate.yml, .windsurfrules, AGENTS.md, CLAUDE.md, docs/plans/, docs/research/, package-lock.json, package.json
-- Modified: .gitignore
+- Modified: none
 
 ## Actions Taken
-1. fix(fetcher): skip 429'd categories in extra fetch instead of aborting all
-2. fix(ci): pass MY_USER_ID secret to pipeline step
-3. fix(pipeline): apply owner_mode per-user so batch runs get opportunity prompts
-4. feat(pipeline): owner-only opportunity-scouting prompts and Notion labels
-5. docs(pipeline): document rationale for ARXIV_CATEGORIES_EXTRA
+1. docs: add RPI research, recovery roadmap, and unified architecture decision
 
 ## Verification & Testing
 - Command: npm test --prefix web && pytest pipeline/tests/ -q
-- Result: Pass (2311ms)
+- Result: Pass (2767ms)
 
 ### Verification Attestation Proof
 * **Verification Command:** `npm test --prefix web && pytest pipeline/tests/ -q`
 * **Result:** Passed ✅
 * **Exit Code:** `0`
-* **Duration:** `2302ms`
-* **Timestamp:** `2026-09-28T12:04:18.876Z`
+* **Duration:** `2503ms`
+* **Timestamp:** `2026-09-28T12:26:07.164Z`
 
 <details open>
 <summary>Console Output</summary>
@@ -41,24 +36,25 @@ Integrate create-agent-room v2.6.0 governance framework and configure strict git
 
  RUN  v4.1.6 /Users/sidpande2/Documents/SIDDHARTH/AIDigestWeb/web
 
+ ✓ lib/__tests__/guest-sessions.test.ts (18 tests) 11ms
  ✓ lib/__tests__/session.test.ts (25 tests) 13ms
- ✓ lib/__tests__/guest-sessions.test.ts (18 tests) 10ms
- ✓ lib/__tests__/logout.test.ts (19 tests) 17ms
- ✓ lib/__tests__/proxy.test.ts (31 tests) 19ms
+ ✓ lib/__tests__/logout.test.ts (19 tests) 19ms
+ ✓ lib/__tests__/proxy.test.ts (31 tests) 21ms
 
  Test Files  4 passed (4)
       Tests  93 passed (93)
-   Start at  17:34:17
-   Duration  274ms (transform 278ms, setup 54ms, import 323ms, tests 59ms, environment 0ms)
+   Start at  17:56:05
+   Duration  292ms (transform 257ms, setup 57ms, import 291ms, tests 64ms, environment 0ms)
 
 ........................................................................ [ 43%]
 ........................................................................ [ 86%]
 ......................                                                   [100%]
-166 passed in 0.78s
+166 passed in 0.86s
 ```
 </details>
 
 ## Decisions & Architecture Changes
+- Architecture Decision: Unify dual-path architecture via Digest Lenses and Web Digest reader (see .agent-room/decisions.md)
 - Architecture Decision: Integrate create-agent-room v2.6.0 governance framework (see .agent-room/decisions.md)
 
 ## Guardrails Compliance Attestation

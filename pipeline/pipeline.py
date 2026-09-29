@@ -12,9 +12,18 @@ load_dotenv()
 
 from config import supabase, get_active_users  # noqa: E402 — must follow load_dotenv
 from fetcher import fetch_extra_papers, fetch_papers
-from pipeline_config import ARXIV_CATEGORIES_EXTRA
+from pipeline_config import (
+    ARXIV_CATEGORIES_EXTRA,
+    ARXIV_CATEGORIES_RESEARCHER,
+    LENS_BUILDER,
+    LENS_FOUNDER,
+    LENS_RESEARCHER,
+    VALID_LENSES,
+)
 from ranker import rank_papers
 from notion_client import deliver_to_notion
+from webhook_client import deliver_to_webhook
+from email_client import deliver_to_email
 
 
 # ── logging setup ──────────────────────────────────────────────────────────────
@@ -222,10 +231,44 @@ def _upsert_run(user_id: str, run_date: str, **fields) -> str:
             {"user_id": user_id, "run_date": run_date, **fields},
             on_conflict="user_id,run_date",
         )
-        .select("id")
         .execute()
     )
-    return result.data[0]["id"]
+    if result.data:
+        return result.data[0]["id"]
+
+    fetch = (
+        supabase.table("pipeline_runs")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("run_date", run_date)
+        .single()
+        .execute()
+    )
+    return fetch.data["id"]
+
+
+def _save_user_digest(
+    user_id: str, run_date: str, lens: str, papers: list[dict]
+) -> None:
+    """Upsert daily digest papers JSON into the digests table for in-app web viewing."""
+    top_score = float(papers[0].get("score", 0)) if papers else None
+    try:
+        supabase.table("digests").upsert(
+            {
+                "user_id": user_id,
+                "run_date": run_date,
+                "lens": lens,
+                "papers": papers,
+                "top_score": top_score,
+            },
+            on_conflict="user_id,run_date",
+        ).execute()
+        log.info(
+            "Saved in-app digest record",
+            extra={"user_id": user_id, "run_date": run_date, "papers_count": len(papers)},
+        )
+    except Exception as exc:
+        log.warning("Failed to save in-app digest to digests table: %s", exc)
 
 
 # ── fatal-error recovery ───────────────────────────────────────────────────────
@@ -261,7 +304,31 @@ def _fail_pending_runs(run_date: str, target_user_id: Optional[str], error: str)
         log.error("Failed to mark runs as failed: %s", cleanup_exc)
 
 
+def _load_user_feedback(user_id: str) -> dict:
+    """Load user's positive and negative paper feedback for personalization."""
+    try:
+        res = (
+            supabase.table("paper_feedback")
+            .select("rating, paper_categories")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        more_cats: set[str] = set()
+        less_cats: set[str] = set()
+        for row in res.data or []:
+            cats = row.get("paper_categories") or []
+            if row.get("rating") == "more":
+                more_cats.update(cats)
+            elif row.get("rating") == "less":
+                less_cats.update(cats)
+        return {"more_categories": list(more_cats), "less_categories": list(less_cats)}
+    except Exception as exc:
+        log.warning("Could not load user feedback for user %s: %s", user_id, exc)
+        return {"more_categories": [], "less_categories": []}
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     run_date = os.environ.get("PIPELINE_RUN_DATE") or date.today().isoformat()
@@ -342,26 +409,25 @@ def main() -> None:
         )
         return
 
-    # ── Extra categories (owner-only, never cached) ───────────────────────────
-    # Fetch extra arXiv categories and merge into the shared paper pool when the
-    # owner (MY_USER_ID) is among the users being processed in this run — whether
-    # that is a scheduled batch run or a single-user manual trigger.
-    #
-    # Placed here (after time filtering) so we only pay the ~90-second extra
-    # fetch cost on runs where the owner is actually due. Other users are never
-    # affected: their paper pool still comes from the shared fetch above.
-    #
-    # owner_mode (per-user, set inside the loop below) activates the
-    # opportunity-scouting prompts and Notion labels for the owner's own digest.
-    # It is False for every other user in the same batch run.
-    owner_in_run = bool(
-        my_user_id and any(u.get("user_id") == my_user_id for u in users)
-    )
-    if owner_in_run:
+    # ── Extra categories (lens-aware, never cached) ───────────────────────────
+    # Fetch extra arXiv categories and merge into the shared paper pool when
+    # users with founder or researcher lenses are due in this run.
+    active_lenses = {
+        u.get("digest_lens")
+        or (LENS_FOUNDER if (my_user_id and u.get("user_id") == my_user_id) else LENS_BUILDER)
+        for u in users
+    }
+    categories_to_fetch = set()
+    if LENS_FOUNDER in active_lenses:
+        categories_to_fetch.update(ARXIV_CATEGORIES_EXTRA)
+    if LENS_RESEARCHER in active_lenses:
+        categories_to_fetch.update(ARXIV_CATEGORIES_RESEARCHER)
+
+    if categories_to_fetch:
         try:
             extra_papers = fetch_extra_papers(
                 run_date,
-                ARXIV_CATEGORIES_EXTRA,
+                sorted(categories_to_fetch),
                 {p["arxiv_id"] for p in papers},
             )
         except Exception as exc:
@@ -388,9 +454,13 @@ def main() -> None:
         user_id: str = user_config["user_id"]
         email: str = user_config.get("users", {}).get("email", user_id)
         run_id: str = ""  # populated inside try; kept in scope for the except handler
-        # True only for the owner — activates opportunity-scouting prompts and
-        # Notion labels. False for every other user in the same run.
-        owner_mode = bool(my_user_id and user_id == my_user_id)
+
+        # Determine user lens (founder, builder, researcher) with backward-compatible fallback
+        lens = (
+            user_config.get("digest_lens")
+            or (LENS_FOUNDER if (my_user_id and user_id == my_user_id) else LENS_BUILDER)
+        )
+        owner_mode = (lens == LENS_FOUNDER)
 
         try:
             # Guard: skip if already successfully delivered today.
@@ -435,8 +505,16 @@ def main() -> None:
                     },
                 )
 
-            # Per-user scoring (only fresh papers)
-            scored = rank_papers(fresh_papers, user_config, use_batch=use_batch, owner_mode=owner_mode)
+            # Per-user scoring (only fresh papers, refined by user feedback)
+            user_feedback = _load_user_feedback(user_id)
+            scored = rank_papers(
+                fresh_papers,
+                user_config,
+                use_batch=use_batch,
+                owner_mode=owner_mode,
+                lens=lens,
+                user_feedback=user_feedback,
+            )
             log.info(
                 "Scoring complete",
                 extra={
@@ -456,6 +534,7 @@ def main() -> None:
                         "completed_at": _now(),
                     }
                 ).eq("id", run_id).execute()
+                _save_user_digest(user_id, run_date, lens, [])
                 log.info(
                     "User run empty — no papers passed threshold",
                     extra={"run_date": run_date, "run_id": run_id, "user_id": user_id},
@@ -463,8 +542,41 @@ def main() -> None:
                 succeeded += 1
                 continue
 
-            # Per-user Notion delivery
-            notion_url = deliver_to_notion(scored, user_config, run_date, owner_mode=owner_mode)
+            # Save in-app digest for web reading
+            _save_user_digest(user_id, run_date, lens, scored)
+
+            # Optional Notion delivery (if configured and connected)
+            notion_url: Optional[str] = None
+            if (
+                user_config.get("notion_connected")
+                and user_config.get("notion_token")
+                and user_config.get("notion_database_id")
+            ):
+                try:
+                    notion_url = deliver_to_notion(
+                        scored, user_config, run_date, owner_mode=owner_mode, lens=lens
+                    )
+                except Exception as notion_exc:
+                    log.warning(
+                        "Notion delivery failed for user %s: %s (in-app digest remains available)",
+                        user_id,
+                        notion_exc,
+                    )
+
+            # Multi-channel delivery: Team Webhook (Slack / Discord / Generic)
+            if user_config.get("webhook_url"):
+                try:
+                    deliver_to_webhook(scored, user_config, run_date, lens=lens)
+                except Exception as hook_exc:
+                    log.warning("Webhook delivery failed for user %s: %s", user_id, hook_exc)
+
+            # Multi-channel delivery: HTML Email Digest
+            if user_config.get("email_digest_enabled"):
+                try:
+                    deliver_to_email(scored, user_config, run_date, lens=lens)
+                except Exception as email_exc:
+                    log.warning("Email delivery failed for user %s: %s", user_id, email_exc)
+
             top_score = float(scored[0].get("score", 0)) if scored else None
 
             # Record delivered papers so they are excluded from future digests

@@ -65,8 +65,15 @@ CREATE TABLE IF NOT EXISTS user_configs (
                                     "real_world_grounding": true,
                                     "novelty_timing": true
                                   }',
-  timezone_offset     integer     NOT NULL DEFAULT 0,
+  digest_lens         text        NOT NULL DEFAULT 'builder'
+                                  CHECK (digest_lens IN ('founder', 'builder', 'researcher')),
+  timezone_offset     FLOAT8      NOT NULL DEFAULT 0,
   digest_hour         integer     NOT NULL DEFAULT 7,
+  email_digest_enabled boolean    NOT NULL DEFAULT false,
+  delivery_email      text,
+  webhook_url         text,
+  webhook_platform    text        NOT NULL DEFAULT 'slack'
+                                  CHECK (webhook_platform IN ('slack', 'discord', 'generic')),
   active              boolean     NOT NULL DEFAULT true,
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now()
@@ -103,6 +110,7 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
   top_score       numeric(3,1),
   notion_page_url text,
   error_message   text,
+  trigger_count   integer     NOT NULL DEFAULT 1,
   started_at      timestamptz,
   completed_at    timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now()
@@ -211,6 +219,50 @@ CREATE INDEX IF NOT EXISTS user_delivered_papers_arxiv_id_idx
   ON user_delivered_papers (arxiv_id);
 
 -- =============================================================================
+-- TABLE: guest_sessions
+-- Server-side session revocation for guest / Notion-first authentication.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS guest_sessions (
+  jti         UUID        PRIMARY KEY,
+  user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at  TIMESTAMPTZ NOT NULL,
+  revoked_at  TIMESTAMPTZ
+);
+
+COMMENT ON TABLE guest_sessions IS
+  'Server-side session tracking for guest (Notion-first) tokens to support revocation.';
+
+CREATE INDEX IF NOT EXISTS guest_sessions_jti_active_idx
+  ON guest_sessions (jti)
+  WHERE revoked_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS guest_sessions_user_id_idx
+  ON guest_sessions (user_id);
+
+-- =============================================================================
+-- TABLE: digests
+-- Daily summarized papers per user for in-app Web Digest reader viewing.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS digests (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  run_date    date        NOT NULL DEFAULT current_date,
+  lens        text        NOT NULL DEFAULT 'builder' CHECK (lens IN ('founder', 'builder', 'researcher')),
+  papers      jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  top_score   float8,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT digests_user_date_key UNIQUE (user_id, run_date)
+);
+
+COMMENT ON TABLE digests IS
+  'Daily summarized papers per user for in-app Web Digest reader viewing, independent of Notion export.';
+
+CREATE INDEX IF NOT EXISTS digests_user_date_idx
+  ON digests (user_id, run_date DESC);
+
+-- =============================================================================
 -- Row Level Security
 -- =============================================================================
 
@@ -220,15 +272,20 @@ ALTER TABLE pipeline_runs          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE papers_cache           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE paper_rankings_cache   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_delivered_papers  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE guest_sessions         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE digests                ENABLE ROW LEVEL SECURITY;
 
 -- users — match directly on clerk_id exposed by Clerk JWT
+DROP POLICY IF EXISTS users_select_own ON users;
 CREATE POLICY users_select_own ON users
   FOR SELECT USING (clerk_id = auth.jwt() ->> 'sub');
 
+DROP POLICY IF EXISTS users_update_own ON users;
 CREATE POLICY users_update_own ON users
   FOR UPDATE USING (clerk_id = auth.jwt() ->> 'sub');
 
 -- user_configs — join to users via user_id
+DROP POLICY IF EXISTS user_configs_select_own ON user_configs;
 CREATE POLICY user_configs_select_own ON user_configs
   FOR SELECT USING (
     user_id IN (
@@ -236,6 +293,7 @@ CREATE POLICY user_configs_select_own ON user_configs
     )
   );
 
+DROP POLICY IF EXISTS user_configs_update_own ON user_configs;
 CREATE POLICY user_configs_update_own ON user_configs
   FOR UPDATE USING (
     user_id IN (
@@ -244,6 +302,7 @@ CREATE POLICY user_configs_update_own ON user_configs
   );
 
 -- pipeline_runs — join to users via user_id
+DROP POLICY IF EXISTS pipeline_runs_select_own ON pipeline_runs;
 CREATE POLICY pipeline_runs_select_own ON pipeline_runs
   FOR SELECT USING (
     user_id IN (
@@ -252,13 +311,99 @@ CREATE POLICY pipeline_runs_select_own ON pipeline_runs
   );
 
 -- papers_cache — readable by all authenticated users (shared, non-sensitive)
+DROP POLICY IF EXISTS papers_cache_select_authenticated ON papers_cache;
 CREATE POLICY papers_cache_select_authenticated ON papers_cache
   FOR SELECT USING (auth.role() = 'authenticated');
 
 -- user_delivered_papers — users can read their own delivery history
+DROP POLICY IF EXISTS user_delivered_papers_select_own ON user_delivered_papers;
 CREATE POLICY user_delivered_papers_select_own ON user_delivered_papers
   FOR SELECT USING (
     user_id IN (
       SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
     )
   );
+
+-- digests — users can read their own daily in-app digests
+DROP POLICY IF EXISTS digests_select_own ON digests;
+CREATE POLICY digests_select_own ON digests
+  FOR SELECT USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
+-- =============================================================================
+-- TABLE: paper_feedback
+-- Users can rate papers ('more' like this or 'less' like this) to personalize
+-- their future digests.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS paper_feedback (
+  id               uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  arxiv_id         text        NOT NULL,
+  rating           text        NOT NULL CHECK (rating IN ('more', 'less')),
+  paper_title      text,
+  paper_categories text[],
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT paper_feedback_user_arxiv_unique UNIQUE (user_id, arxiv_id)
+);
+
+CREATE INDEX IF NOT EXISTS paper_feedback_user_id_idx ON paper_feedback (user_id);
+CREATE INDEX IF NOT EXISTS paper_feedback_arxiv_id_idx ON paper_feedback (arxiv_id);
+
+CREATE TRIGGER paper_feedback_set_updated_at
+  BEFORE UPDATE ON paper_feedback
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE paper_feedback ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS paper_feedback_select_own ON paper_feedback;
+CREATE POLICY paper_feedback_select_own ON paper_feedback
+  FOR SELECT USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
+DROP POLICY IF EXISTS paper_feedback_insert_own ON paper_feedback;
+CREATE POLICY paper_feedback_insert_own ON paper_feedback
+  FOR INSERT WITH CHECK (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
+DROP POLICY IF EXISTS paper_feedback_update_own ON paper_feedback;
+CREATE POLICY paper_feedback_update_own ON paper_feedback
+  FOR UPDATE USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  ) WITH CHECK (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
+DROP POLICY IF EXISTS paper_feedback_delete_own ON paper_feedback;
+CREATE POLICY paper_feedback_delete_own ON paper_feedback
+  FOR DELETE USING (
+    user_id IN (
+      SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+    )
+  );
+
+-- user_configs — minimal anon read for GitHub Actions scheduling check gate
+GRANT SELECT (digest_hour, timezone_offset)
+  ON user_configs
+  TO anon;
+
+DROP POLICY IF EXISTS user_configs_anon_scheduling_read ON user_configs;
+CREATE POLICY user_configs_anon_scheduling_read
+  ON user_configs
+  FOR SELECT
+  TO anon
+  USING (active = true);
+

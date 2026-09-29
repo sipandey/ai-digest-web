@@ -90,8 +90,13 @@ export async function rateLimit(
     return memRateLimit(key, limit, windowMs);
   }
 
-  const rl = getUpstashInstance(limit, windowMs);
-  const { success, remaining, reset } = await rl.limit(key);
-  // Upstash `reset` is a Unix timestamp in milliseconds.
-  return { allowed: success, remaining, resetAt: reset };
+  try {
+    const rl = getUpstashInstance(limit, windowMs);
+    const { success, remaining, reset } = await rl.limit(key);
+    // Upstash `reset` is a Unix timestamp in milliseconds.
+    return { allowed: success, remaining, resetAt: reset };
+  } catch (err) {
+    console.warn("Upstash rate limit failed, falling back to in-memory:", err);
+    return memRateLimit(key, limit, windowMs);
+  }
 }

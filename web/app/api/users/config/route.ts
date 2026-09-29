@@ -68,19 +68,19 @@ async function prepareConfigForResponse(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { notion_token, notion_database_id, ...rest } = config;
 
-  let dbId: string | undefined;
+  let dbId: string | null = null;
   if (typeof notion_database_id === "string" && notion_database_id) {
     try {
       dbId = await decrypt(notion_database_id);
     } catch {
       // Decryption failure — omit rather than expose ciphertext
-      dbId = undefined;
+      dbId = null;
     }
   }
 
   return {
     ...rest,
-    ...(dbId !== undefined ? { notion_database_id: dbId } : {}),
+    notion_database_id: dbId,
   };
 }
 
@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
       experienceLevel,
       digestHour,
       timezoneOffset,
+      digestLens,
     } = body;
 
     // ── Input validation ─────────────────────────────────────────────────────
@@ -140,6 +141,9 @@ export async function POST(req: NextRequest) {
 
     if (typeof profileDescription === "string" && profileDescription.length > 500) {
       postErrors.push("profile_description must be 500 characters or fewer");
+    }
+    if (typeof digestLens === "string" && !["builder", "founder", "researcher"].includes(digestLens)) {
+      postErrors.push("digest_lens must be one of: builder, founder, researcher");
     }
     if (Array.isArray(topics)) {
       if (topics.length > 5) postErrors.push("topics must have 5 items or fewer");
@@ -157,29 +161,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: postErrors.join("; ") }, { status: 400 });
     }
 
-    // Validate Notion credentials before persisting — uses plaintext values
-    // from the request body, before encryption.
-    const check = await validateNotionCredentials(
-      String(notionToken ?? ""),
-      String(notionDatabaseId ?? ""),
-    );
-    if (!check.ok) {
-      return NextResponse.json({ error: check.error }, { status: 400 });
+    // Notion credentials validation (optional)
+    let encryptedToken: string | null = null;
+    let encryptedDatabaseId: string | null = null;
+    let notionConnected = false;
+
+    if (notionToken && notionDatabaseId) {
+      const check = await validateNotionCredentials(
+        String(notionToken),
+        String(notionDatabaseId),
+      );
+      if (!check.ok) {
+        return NextResponse.json({ error: check.error }, { status: 400 });
+      }
+
+      [encryptedToken, encryptedDatabaseId] = await Promise.all([
+        encrypt(String(notionToken)),
+        encrypt(cleanNotionDatabaseId(String(notionDatabaseId))),
+      ]);
+      notionConnected = true;
     }
 
-    // Encrypt credentials at the application layer before persisting.
-    const [encryptedToken, encryptedDatabaseId] = await Promise.all([
-      encrypt(String(notionToken)),
-      encrypt(String(notionDatabaseId)),
-    ]);
-
     const { data, error } = await saveUserConfig(userId, {
-      notion_token: encryptedToken,
-      notion_database_id: encryptedDatabaseId,
-      notion_connected: true,
+      ...(encryptedToken ? { notion_token: encryptedToken } : {}),
+      ...(encryptedDatabaseId ? { notion_database_id: encryptedDatabaseId } : {}),
+      notion_connected: notionConnected,
       topics,
       profile_description: profileDescription,
       experience_level: experienceLevel,
+      ...(typeof digestLens === "string" && ["builder", "founder", "researcher"].includes(digestLens)
+        ? { digest_lens: digestLens }
+        : {}),
       ...(typeof digestHour === "number" ? { digest_hour: digestHour } : {}),
       ...(typeof timezoneOffset === "number" ? { timezone_offset: timezoneOffset } : {}),
     });
@@ -216,8 +228,12 @@ export async function PATCH(req: NextRequest) {
       digestHour: "digest_hour",
       timezoneOffset: "timezone_offset",
       scoringPriorities: "scoring_priorities",
-      // `active` is intentionally excluded — account activation/deactivation
-      // must only be performed by an admin, never by the user themselves.
+      digestLens: "digest_lens",
+      emailDigestEnabled: "email_digest_enabled",
+      deliveryEmail: "delivery_email",
+      webhookUrl: "webhook_url",
+      webhookPlatform: "webhook_platform",
+      disconnectNotion: "disconnect_notion",
       notion_token: "notion_token",
       notion_database_id: "notion_database_id",
       notion_connected: "notion_connected",
@@ -226,7 +242,16 @@ export async function PATCH(req: NextRequest) {
       digest_hour: "digest_hour",
       timezone_offset: "timezone_offset",
       scoring_priorities: "scoring_priorities",
+      digest_lens: "digest_lens",
+      email_digest_enabled: "email_digest_enabled",
+      delivery_email: "delivery_email",
+      webhook_url: "webhook_url",
+      webhook_platform: "webhook_platform",
     };
+
+    // `active` lives on the `users` table, NOT on `user_configs` — handle it separately.
+    const activeValue: boolean | undefined =
+      body.active !== undefined ? Boolean(body.active) : undefined;
 
     const updates: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(body)) {
@@ -234,7 +259,21 @@ export async function PATCH(req: NextRequest) {
       if (col && value !== undefined) updates[col] = value;
     }
 
-    if (Object.keys(updates).length === 0) {
+    const isDisconnectingNotion =
+      body.disconnectNotion === true ||
+      body.disconnect_notion === true ||
+      (updates["notion_connected"] === false && !body.notionToken && !body.notion_token);
+
+    if (isDisconnectingNotion) {
+      delete updates["disconnect_notion"];
+      updates["notion_connected"] = false;
+      updates["notion_token"] = null;
+      updates["notion_database_id"] = null;
+    }
+
+    // If the only field sent was `active`, updates will be empty but that is still valid.
+    const hasConfigUpdates = Object.keys(updates).length > 0;
+    if (!hasConfigUpdates && activeValue === undefined) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
@@ -293,6 +332,49 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    if ("digest_lens" in updates) {
+      const v = updates["digest_lens"];
+      if (v !== null && v !== undefined) {
+        if (typeof v !== "string" || !["builder", "founder", "researcher"].includes(v)) {
+          validationErrors.push("digest_lens must be one of: builder, founder, researcher");
+        }
+      }
+    }
+
+    if ("email_digest_enabled" in updates) {
+      const v = updates["email_digest_enabled"];
+      if (typeof v !== "boolean") {
+        updates["email_digest_enabled"] = Boolean(v);
+      }
+    }
+
+    if ("delivery_email" in updates) {
+      const v = updates["delivery_email"];
+      if (v !== null && v !== "") {
+        if (typeof v !== "string" || !v.includes("@")) {
+          validationErrors.push("delivery_email must be a valid email address");
+        }
+      }
+    }
+
+    if ("webhook_url" in updates) {
+      const v = updates["webhook_url"];
+      if (v !== null && v !== "") {
+        if (typeof v !== "string" || (!v.startsWith("http://") && !v.startsWith("https://"))) {
+          validationErrors.push("webhook_url must be a valid HTTP or HTTPS URL");
+        }
+      }
+    }
+
+    if ("webhook_platform" in updates) {
+      const v = updates["webhook_platform"];
+      if (v !== null && v !== undefined) {
+        if (typeof v !== "string" || !["slack", "discord", "generic"].includes(v)) {
+          validationErrors.push("webhook_platform must be one of: slack, discord, generic");
+        }
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json({ error: validationErrors.join("; ") }, { status: 400 });
     }
@@ -303,9 +385,13 @@ export async function PATCH(req: NextRequest) {
     // and decrypt the other from the DB so validateNotionCredentials() can
     // test both together against the Notion API.
     const updatingToken =
-      typeof updates["notion_token"] === "string" && !!updates["notion_token"];
+      !isDisconnectingNotion &&
+      typeof updates["notion_token"] === "string" &&
+      !!updates["notion_token"];
     const updatingDbId =
-      typeof updates["notion_database_id"] === "string" && !!updates["notion_database_id"];
+      !isDisconnectingNotion &&
+      typeof updates["notion_database_id"] === "string" &&
+      !!updates["notion_database_id"];
 
     if (updatingToken || updatingDbId) {
       let plainToken: string;
@@ -358,18 +444,41 @@ export async function PATCH(req: NextRequest) {
       updates["notion_token"] = await encrypt(updates["notion_token"] as string);
     }
     if (updatingDbId) {
-      updates["notion_database_id"] = await encrypt(updates["notion_database_id"] as string);
+      updates["notion_database_id"] = await encrypt(
+        cleanNotionDatabaseId(updates["notion_database_id"] as string),
+      );
     }
 
-    const { data, error } = await saveUserConfig(userId, updates);
+    let configData: Record<string, unknown> = {};
 
-    if (error) {
-      console.error("Update user_configs error:", error);
-      return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
+    if (hasConfigUpdates) {
+      const { data, error } = await saveUserConfig(userId, updates);
+
+      if (error) {
+        console.error("Update user_configs error:", error);
+        return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
+      }
+
+      configData = data as Record<string, unknown>;
     }
 
-    return NextResponse.json({ config: await prepareConfigForResponse(data as Record<string, unknown>) });
-  } catch {
+    // Update `active` on the `users` table (vacation mode) — separate from user_configs.
+    if (activeValue !== undefined) {
+      const { error: activeError } = await supabaseAdmin
+        .from("users")
+        .update({ active: activeValue })
+        .eq("id", userId);
+      if (activeError) {
+        console.error("Update users.active error:", activeError);
+        // Non-fatal: config was saved; surface the active value from request body.
+      }
+      // Merge active into the response so the client sees the updated value.
+      configData = { ...configData, active: activeValue };
+    }
+
+    return NextResponse.json({ config: await prepareConfigForResponse(configData) });
+  } catch (err) {
+    console.error("PATCH /api/users/config failed:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

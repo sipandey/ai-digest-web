@@ -129,6 +129,24 @@ async function spawnLocalPipeline(userId: string, runDate: string) {
   child.unref();
 }
 
+async function dispatchPipelineService(userId: string, runDate: string) {
+  const serviceUrl = process.env.PIPELINE_SERVICE_URL;
+  if (!serviceUrl) {
+    throw new Error("PIPELINE_SERVICE_URL not configured");
+  }
+
+  const response = await fetch(`${serviceUrl}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId, run_date: runDate }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Pipeline service error (${response.status}): ${text}`);
+  }
+}
+
 async function markRunFailed(runId: string, message: string) {
   await supabaseAdmin
     .from("pipeline_runs")
@@ -180,7 +198,7 @@ export async function POST() {
     // Resolve user + config in one query
     const { data: user, error: userError } = await supabaseAdmin
       .from("users")
-      .select("id, user_configs(notion_connected, updated_at)")
+      .select("id, user_configs(id, updated_at)")
       .eq("id", userId)
       .single();
 
@@ -188,16 +206,15 @@ export async function POST() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const configs = user.user_configs as { notion_connected: boolean; updated_at: string | null }[];
-    const notionConnected = configs?.[0]?.notion_connected ?? false;
-    const configUpdatedAt = configs?.[0]?.updated_at ?? null;
-
-    if (!notionConnected) {
+    const configs = user.user_configs as { id: string; updated_at: string | null }[];
+    if (!configs || configs.length === 0) {
       return NextResponse.json(
-        { error: "Notion not connected — complete onboarding first" },
+        { error: "Please complete onboarding before triggering a digest" },
         { status: 400 }
       );
     }
+
+    const configUpdatedAt = configs[0]?.updated_at ?? null;
 
     const triggerMode = getTriggerMode();
 
@@ -316,6 +333,8 @@ export async function POST() {
       try {
         if (triggerMode === "github_actions") {
           await dispatchGitHubWorkflow(user.id, today);
+        } else if (process.env.PIPELINE_SERVICE_URL) {
+          await dispatchPipelineService(user.id, today);
         } else {
           await spawnLocalPipeline(user.id, today);
         }
@@ -359,6 +378,8 @@ export async function POST() {
     try {
       if (triggerMode === "github_actions") {
         await dispatchGitHubWorkflow(user.id, today);
+      } else if (process.env.PIPELINE_SERVICE_URL) {
+        await dispatchPipelineService(user.id, today);
       } else {
         await spawnLocalPipeline(user.id, today);
       }
