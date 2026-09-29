@@ -233,7 +233,6 @@ export async function PATCH(req: NextRequest) {
       deliveryEmail: "delivery_email",
       webhookUrl: "webhook_url",
       webhookPlatform: "webhook_platform",
-      active: "active",
       disconnectNotion: "disconnect_notion",
       notion_token: "notion_token",
       notion_database_id: "notion_database_id",
@@ -249,6 +248,10 @@ export async function PATCH(req: NextRequest) {
       webhook_url: "webhook_url",
       webhook_platform: "webhook_platform",
     };
+
+    // `active` lives on the `users` table, NOT on `user_configs` — handle it separately.
+    const activeValue: boolean | undefined =
+      body.active !== undefined ? Boolean(body.active) : undefined;
 
     const updates: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(body)) {
@@ -268,19 +271,14 @@ export async function PATCH(req: NextRequest) {
       updates["notion_database_id"] = null;
     }
 
-    if (Object.keys(updates).length === 0) {
+    // If the only field sent was `active`, updates will be empty but that is still valid.
+    const hasConfigUpdates = Object.keys(updates).length > 0;
+    if (!hasConfigUpdates && activeValue === undefined) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
     // ── Server-side validation ────────────────────────────────────────────────
     const validationErrors: string[] = [];
-
-    if ("active" in updates) {
-      const v = updates["active"];
-      if (typeof v !== "boolean") {
-        updates["active"] = Boolean(v);
-      }
-    }
 
     if ("profile_description" in updates) {
       const v = updates["profile_description"];
@@ -451,14 +449,34 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const { data, error } = await saveUserConfig(userId, updates);
+    let configData: Record<string, unknown> = {};
 
-    if (error) {
-      console.error("Update user_configs error:", error);
-      return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
+    if (hasConfigUpdates) {
+      const { data, error } = await saveUserConfig(userId, updates);
+
+      if (error) {
+        console.error("Update user_configs error:", error);
+        return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
+      }
+
+      configData = data as Record<string, unknown>;
     }
 
-    return NextResponse.json({ config: await prepareConfigForResponse(data as Record<string, unknown>) });
+    // Update `active` on the `users` table (vacation mode) — separate from user_configs.
+    if (activeValue !== undefined) {
+      const { error: activeError } = await supabaseAdmin
+        .from("users")
+        .update({ active: activeValue })
+        .eq("id", userId);
+      if (activeError) {
+        console.error("Update users.active error:", activeError);
+        // Non-fatal: config was saved; surface the active value from request body.
+      }
+      // Merge active into the response so the client sees the updated value.
+      configData = { ...configData, active: activeValue };
+    }
+
+    return NextResponse.json({ config: await prepareConfigForResponse(configData) });
   } catch (err) {
     console.error("PATCH /api/users/config failed:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

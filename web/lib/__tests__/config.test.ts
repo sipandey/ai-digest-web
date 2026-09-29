@@ -171,8 +171,11 @@ describe("/api/users/config", () => {
 
     it("supports vacation mode (active: false / active: true)", async () => {
       mockGetAuthUserId.mockResolvedValue("user-123");
-      const updatedRow = { user_id: "user-123", active: false };
-      chain.single.mockResolvedValue({ data: updatedRow, error: null });
+
+      // `active: false` is the only field — no user_configs upsert, only users update.
+      const mockUpdate = vi.fn().mockReturnValue(chain);
+      chain.update = mockUpdate;
+      chain.eq.mockResolvedValue({ data: null, error: null });
 
       const req = new NextRequest("http://localhost:3100/api/users/config", {
         method: "PATCH",
@@ -181,10 +184,13 @@ describe("/api/users/config", () => {
 
       const res = await PATCH(req);
       expect(res.status).toBe(200);
-      expect(chain.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ user_id: "user-123", active: false }),
-        { onConflict: "user_id" }
-      );
+      // Should NOT have upserted active into user_configs
+      expect(chain.upsert).not.toHaveBeenCalled();
+      // Should have updated users table with active: false
+      expect(mockUpdate).toHaveBeenCalledWith({ active: false });
+      // Response body should reflect the active value
+      const body = await res.json();
+      expect(body.config.active).toBe(false);
     });
 
     it("disconnects Notion workspace cleanly without API validation error", async () => {
