@@ -16,6 +16,12 @@ have to re-derive it from scratch by reading git history.
 
 <!-- Entries go below this line, newest first. -->
 
+### 2026-10-13 — Restrict anonymous scheduling access through an RPC
+
+**Decision:** The hourly workflow calls `get_active_digest_schedules()`. The migration revokes direct anon SELECT on `user_configs` and grants anon EXECUTE only on this no-argument, active-row, two-field function.
+**Why:** Live verification showed an existing table-level SELECT grant exposed `user_id`; a two-column grant alone could not reduce that access. The RPC keeps the active filter inside the database while returning only scheduling values.
+**Rejected:** Keeping the direct table query with an additional `active` column grant, which would expose a third field and depend on carefully maintained table privileges.
+
 ### 2026-09-29 — Home screen and dashboard refinement (Bookmarking, Sticky Precision Strip, Multi-Persona Lens, Smart Session)
 
 **Decision:** Refactored the core reader and dashboard components (`PaperCard`, `DigestReader`, `DashboardView`, `SidebarCards`, `bookmarks.ts`) to introduce client-side bookmarking with an event bus, 1-click takeaway copying, and precision filters (Saved, Must-Read 8.0+). Transformed the desktop sidebar into a `sticky top-6` Precision Command Strip with clickable Briefing Outline links that smooth-scroll to papers. Modernized the public landing page (`page.tsx`, `InteractiveLensPreview.tsx`) with server-side session awareness (auto-recognizing returning users with `Welcome back` + `Go to Dashboard`) and an interactive 3-way synthesis preview widget (Builder, Founder, Researcher lenses).

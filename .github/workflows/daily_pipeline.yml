@@ -77,11 +77,9 @@ jobs:
         id: count
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          # Anon key, not the service role key — the check query only needs
-          # digest_hour and timezone_offset for active users (read-only, no PII).
-          # A scoped RLS policy + column-level GRANT limits anon to exactly those
-          # two columns. If this key were ever leaked from a log, blast radius is
-          # zero — it can't read user IDs, emails, tokens, or write anything.
+          # Anon key, not the service role key. A restricted RPC returns only
+          # digest_hour and timezone_offset for active users. Anon has no
+          # direct SELECT access to user_configs.
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -101,16 +99,12 @@ jobs:
             exit 0
           fi
 
-          # Fetch all active users that have Notion connected.
-          # Only the two scheduling fields are needed — keep the payload small.
-          # Uses the anon key (not service role) — an RLS policy + column-level
-          # GRANT restricts anon to exactly digest_hour and timezone_offset.
-          RESPONSE=$(curl -sf \
+          # Fetch active schedules, including web-only users. The RPC returns
+          # only the two fields needed for the gate.
+          if ! RESPONSE=$(curl -sf \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${SUPABASE_URL}/rest/v1/user_configs?select=digest_hour,timezone_offset&active=eq.true&notion_connected=eq.true")
-
-          if [[ $? -ne 0 ]]; then
+            "${SUPABASE_URL}/rest/v1/rpc/get_active_digest_schedules"); then
             echo "Supabase query failed — letting pipeline run to surface the error"
             echo "users_due=fallback" >> "$GITHUB_OUTPUT"
             exit 0
