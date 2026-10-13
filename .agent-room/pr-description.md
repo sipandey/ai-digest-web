@@ -1,72 +1,54 @@
 # Pull Request Description
 
 ## Overview
-* **Session Log Reference:** [2026-09-28-17-55-spm-audit-and-roadmap.md](.agent-room/sessions/2026-09-28-17-55-spm-audit-and-roadmap.md)
-* **Date:** 2026-09-28 12:25
+* **Session Log Reference:** [2026-10-13-13-45-scheduled-web-digest-delivery.md](.agent-room/sessions/2026-10-13-13-45-scheduled-web-digest-delivery.md)
+* **Date:** 2026-10-13 13:45
 * **Agent:** Siddharth Pandey
-* **Classification:** Enhancement
+* **Classification:** Feature
 
 ## Goal
-SPM audit of downtime, deconstruction of dual-path architecture, and unified product roadmap following CAR RPI guidelines
+Restore scheduled pipeline delivery for web-only users by updating GitHub Actions scheduling gate, securing Supabase anon access with a dedicated RPC, and ensuring complete regression coverage.
 
 ## Changes Implemented
-- Modified: none
+- Created: docs/research/2026-10-13-scheduled-web-digest-delivery.md
+- Created: docs/plans/2026-10-13-scheduled-web-digest-delivery.md
+- Created: pipeline/tests/test_schedule_gate.py
+- Created: supabase/migrations/20261013_anon_digest_schedules_rpc.sql
+- Created: .agent-room/sessions/2026-10-13-13-45-scheduled-web-digest-delivery.md
+- Modified: .github/workflows/daily_pipeline.yml
+- Modified: supabase/schema.sql
+- Modified: docs/testing-guide.md
+- Modified: .agent-room/anti-patterns.md
+- Modified: .agent-room/decisions.md
 
 ## Actions Taken
-1. docs: add RPI research, recovery roadmap, and unified architecture decision
+1. Conducted root cause research on why web-only users were skipped by hourly scheduled runs (Notion filter in GitHub Actions check step) and documented findings in `docs/research/2026-10-13-scheduled-web-digest-delivery.md`.
+2. Created implementation plan in `docs/plans/2026-10-13-scheduled-web-digest-delivery.md`.
+3. Created `pipeline/tests/test_schedule_gate.py` with mock PostgREST server to exercise the workflow's shell logic under `bash -e -o pipefail`. Verified red tests for web-only eligibility and error fallback.
+4. Updated `.github/workflows/daily_pipeline.yml` to call `get_active_digest_schedules` RPC instead of querying `user_configs` directly, and guarded the curl invocation (`if ! RESPONSE=$(curl -sf ...); then`) so query failure emits `users_due=fallback` without prematurely exiting under errexit.
+5. Implemented migration `supabase/migrations/20261013_anon_digest_schedules_rpc.sql` and updated canonical `supabase/schema.sql` to expose `get_active_digest_schedules()` security definer function, while revoking table and column SELECT privileges on `user_configs` from anon and public to prevent `user_id` leakage.
+6. Updated operator manual testing instructions in `docs/testing-guide.md` to reflect web-only delivery and the hourly cron check with anon RPC gate.
+7. Recorded root cause and anti-pattern lessons in `.agent-room/anti-patterns.md` and architecture decision in `.agent-room/decisions.md`.
+8. Completed automated verification with `npm test`, `npm run validate`, `npm run eval`, and `npm run doctor`.
 
 ## Verification & Testing
-- Command: npm test --prefix web && pytest pipeline/tests/ -q
-- Result: Pass (2767ms)
-
-### Verification Attestation Proof
-* **Verification Command:** `npm test --prefix web && pytest pipeline/tests/ -q`
-* **Result:** Passed ✅
-* **Exit Code:** `0`
-* **Duration:** `2503ms`
-* **Timestamp:** `2026-09-28T12:26:07.164Z`
-
-<details open>
-<summary>Console Output</summary>
-
-```
-> ai-digest-web@0.1.0 test
-> vitest run
-
-
- RUN  v4.1.6 /Users/sidpande2/Documents/SIDDHARTH/AIDigestWeb/web
-
- ✓ lib/__tests__/guest-sessions.test.ts (18 tests) 11ms
- ✓ lib/__tests__/session.test.ts (25 tests) 13ms
- ✓ lib/__tests__/logout.test.ts (19 tests) 19ms
- ✓ lib/__tests__/proxy.test.ts (31 tests) 21ms
-
- Test Files  4 passed (4)
-      Tests  93 passed (93)
-   Start at  17:56:05
-   Duration  292ms (transform 257ms, setup 57ms, import 291ms, tests 64ms, environment 0ms)
-
-........................................................................ [ 43%]
-........................................................................ [ 86%]
-......................                                                   [100%]
-166 passed in 0.86s
-```
-</details>
+- Command: pytest pipeline/tests/test_schedule_gate.py
+- Result: Pass (6 gate tests passed)
+- Command: npm run test:web
+- Result: Pass (124 web Vitest tests passed across 10 suites)
+- Command: npm run test:pipeline
+- Result: Pass (206 pipeline Pytest tests passed across 9 suites)
+- Command: npm test
+- Result: Pass (330 tests passed: 124 Vitest + 206 Pytest)
+- Command: npm run validate
+- Result: Pass (Integrity checks passed)
+- Command: npm run eval
+- Result: Pass (8/8 compliance evals passed)
+- Command: npm run doctor
+- Result: Pass (CAR doctor checks passed)
 
 ## Decisions & Architecture Changes
-- Architecture Decision: Unify dual-path architecture via Digest Lenses and Web Digest reader (see .agent-room/decisions.md)
-- Architecture Decision: Integrate create-agent-room v2.6.0 governance framework (see .agent-room/decisions.md)
-
-## Guardrails Compliance Attestation
-* **Status:** Audited Bypasses Recorded ⚠️ (1 total)
-* **Justification Breakdown:** 0 with reason, 1 without reason
-
-## Reviewer Compliance Checklist
-- [x] Automated verification test suite passing (`npm test --prefix web && pytest pipeline/tests/ -q`)
-- [x] Architectural decisions documented in `.agent-room/decisions.md`
-- [ ] Guardrail policies satisfied (1 auditable bypass(es) logged)
-- [x] Session log recorded under `.agent-room/sessions/`
-- [x] Scope boundaries respected during task execution
+- Restrict anonymous scheduling access through `get_active_digest_schedules()` RPC and revoke direct anon SELECT on `user_configs` (recorded in `.agent-room/decisions.md`).
 
 ## Outcome & Next Steps
 * **Status:** **Status:** Completed

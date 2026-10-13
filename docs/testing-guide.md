@@ -990,7 +990,7 @@ curl -s http://localhost:3000/api/users/runs \
 
 ### Test 5.6 — POST /api/pipeline/trigger
 
-**WHAT:** Queue a manual pipeline run and verify the duplicate guard.
+**WHAT:** Queue a manual pipeline run without Notion and verify the in-flight guard.
 
 **HOW:**
 ```bash
@@ -998,7 +998,7 @@ curl -s http://localhost:3000/api/users/runs \
 curl -s -X POST http://localhost:3000/api/pipeline/trigger \
   -H "Cookie: __session=$TOKEN" | jq .
 
-# Second trigger same day — should fail
+# Immediate second trigger while pending — should fail
 curl -s -X POST http://localhost:3000/api/pipeline/trigger \
   -H "Cookie: __session=$TOKEN" | jq .
 ```
@@ -1015,12 +1015,12 @@ ORDER BY created_at DESC;
 // First call
 {"success": true, "runId": "<uuid>", "message": "Your digest is being generated..."}
 
-// Second call
-{"error": "Already ran today", "status": "pending"}
+// Immediate second call while the first is pending
+{"error": "Digest is already running", "status": "pending"}
 ```
 Supabase shows exactly 1 row for today with `status = 'pending'`.
 
-**IF IT FAILS:** `400 Notion not connected` → complete onboarding first or set `notion_connected = true` in SQL. Two rows inserted → the duplicate check query has a bug.
+**IF IT FAILS:** `400 Please complete onboarding` means the user has no `user_configs` row; Notion is optional. Two rows for the same user and date indicate a duplicate guard problem.
 
 ---
 
@@ -1240,55 +1240,38 @@ Then visit `/dashboard` and check the Run history section.
 
 ### Test 7.1 — Full new user journey
 
-**WHAT:** Complete end-to-end test from blank slate to Notion digest.
+**WHAT:** Complete the web-first journey from signup to a scheduled in-app digest without connecting Notion.
 
-**WHY:** The only test that proves all layers work together with real credentials.
+**WHY:** Confirms the hourly gate, pipeline, digest persistence, and reader work together for a web-only user.
 
 **HOW:**
 
-**Step 1: Clear test data**
-```sql
--- Remove only the manually-created test user (keep real users)
-DELETE FROM users WHERE clerk_id = 'user_test_dev_clerk_id_001';
--- Also clear today's papers_cache if you want to test a fresh fetch
-DELETE FROM papers_cache WHERE fetch_date = CURRENT_DATE;
-```
+**Step 1: Create a web-only test user**
+1. In a test environment with the reviewed workflow deployed, sign up through Clerk and complete onboarding with a profile, lens, and 2–3 topics. Skip the optional Notion connection.
+2. In Settings, set the delivery hour and timezone offset so the target UTC hour is the next hourly check. Confirm `user_configs.active = true` and `notion_connected = false` for this test account.
+3. Verify the deployed `user_configs_anon_scheduling_read` policy permits all active configs (`USING (active = true)`). Using the anon key, request only `digest_hour,timezone_offset` with `active=eq.true`; the response should include the test user's scheduling row without exposing personal data.
 
-**Step 2–4: Sign up and onboard**
-1. Open `http://localhost:3000` in incognito
-2. Click **Get started free** → complete Clerk sign-up
-3. Complete onboarding: write a real profile description, add 2–3 topics, connect your real Notion workspace
+**Step 2: Observe the scheduled workflow**
+1. Wait for the next `schedule` run in **GitHub Actions → Pipeline** at or after the test user's target UTC hour. Do not use **Run workflow** for this check: manual dispatch bypasses the hourly gate.
+2. Open the `check` job log. Confirm `Users due by UTC ...` shows a count greater than zero and the `pipeline` job starts.
+3. After it finishes, confirm the user's `pipeline_runs` row for today has `status = 'complete'` or `status = 'empty'`. If complete, confirm a row exists in `digests` for the same user and date.
+4. Refresh `/dashboard`; for a complete run, open today's briefing and verify paper takeaways and arXiv links. An empty run should show the no-matching-papers state.
 
-**Step 5–8: Run and check**
-1. On the dashboard, verify the grey "hasn't run yet" card
-2. Click **Run now**
-3. Verify `pending` status card appears (may need one refresh)
-4. In a terminal: `cd pipeline && python pipeline.py`
-5. Wait for completion. Refresh `/dashboard`
-6. Verify green "Today's digest is ready" card with paper count
+**EXPECTED:** The scheduled pipeline includes a web-only user. The in-app digest is available when papers pass the threshold. Connecting Notion is an optional additional channel check.
 
-**Step 9–10: Verify Notion**
-1. Click **View in Notion**
-2. Verify page title: `AI Digest — YYYY-MM-DD`
-3. Verify paper count summary line at top
-4. Open one toggle — verify Problem / Approach / Results / Builder Takeaway / Before Reading all populated
-5. Verify "Read paper →" links to real arXiv PDF
-
-**EXPECTED:** Notion page contains 3–12 papers with complete summaries. Page structure matches the spec.
-
-**IF IT FAILS:** Work backwards through the layers: check `pipeline_runs` status in Supabase first, then the `error_message` column if status is `failed`.
+**IF IT FAILS:** If the check reports zero due users, inspect the deployed workflow query and anon RLS policy. If the pipeline starts but no run completes, check the `pipeline_runs.error_message` and pipeline job logs.
 
 ---
 
-### Test 7.2 — Second run same day
+### Test 7.2 — Same-day cached result
 
-**WHAT:** Verify the duplicate run guard prevents double-publishing.
+**WHAT:** Verify a repeat request with unchanged settings reuses today's result.
 
 **HOW:** Immediately after Test 7.1 completes, click **Run now** on the dashboard.
 
-**EXPECTED:** Error message: "Already ran today" — no second Notion page created, no new `pipeline_runs` row.
+**EXPECTED:** The app reports the digest is already up to date. The trigger response has `cached: true`; no new workflow is dispatched and no new `pipeline_runs` row is created.
 
-**IF IT FAILS:** Two `pipeline_runs` rows for today → the `maybeSingle()` check in the trigger route failed. Check `api/pipeline/trigger/route.ts`.
+**IF IT FAILS:** Check the existing run's `completed_at` and the config's `updated_at`. An in-flight run should instead return `Digest is already running`.
 
 ---
 
@@ -1299,20 +1282,13 @@ DELETE FROM papers_cache WHERE fetch_date = CURRENT_DATE;
 **HOW:**
 1. Go to Settings, change topics to something completely different (e.g. `["AI safety", "multimodal AI"]`)
 2. Save profile
-3. Move today's run to yesterday so "Run now" is available:
-```sql
-UPDATE pipeline_runs
-SET run_date = CURRENT_DATE - 1
-WHERE user_id = (SELECT id FROM users WHERE email = 'your-email@example.com')
-  AND run_date = CURRENT_DATE;
-```
-4. Click **Run now** on the dashboard
-5. Run `python pipeline.py` in terminal
-6. Open the new Notion page — verify papers are skewed toward the new topics
+3. Wait at least five minutes after the successful run to clear the rerun cooldown.
+4. Click **Run now** on the dashboard. Confirm a new manual workflow is dispatched for the same user.
+5. After the run completes, refresh the in-app digest and compare its papers and takeaways with the earlier result.
 
-**EXPECTED:** New Notion page has noticeably different papers than the first run. At least some papers in the `AI safety` or `multimodal AI` groups should appear.
+**EXPECTED:** The digest is regenerated using the updated topics without requiring Notion. Paper selection may differ; inspect the run and digest records even if the day's arXiv corpus yields no new matches.
 
-**IF IT FAILS:** Same papers appear → the ranker is reading from a cached `user_config` that wasn't updated. Verify the Supabase `user_configs` row has the new topics before running the pipeline.
+**IF IT FAILS:** Confirm the `user_configs` row contains the new topics, the five-minute cooldown elapsed, and the manual-run limit has not been reached.
 
 ---
 
@@ -1322,29 +1298,17 @@ WHERE user_id = (SELECT id FROM users WHERE email = 'your-email@example.com')
 
 ### Test 8.1 — Manual workflow trigger
 
-**WHAT:** Trigger the daily pipeline from the GitHub Actions UI.
+**WHAT:** Trigger the pipeline manually from the GitHub Actions UI.
 
 **WHY:** Confirms the workflow file is valid, secrets are set, and the production environment works.
 
 **HOW:**
-1. Push all changes to the `main` branch on GitHub
-2. Go to your GitHub repository → **Actions** tab
-3. Click **Daily Pipeline** in the left sidebar
-4. Click **Run workflow** → select `main` branch → click the green **Run workflow** button
-5. Click the running workflow to expand it and watch the logs in real time
+1. After reviewed deployment, go to your GitHub repository → **Actions** tab
+2. Click **Pipeline** in the left sidebar
+3. Click **Run workflow** → select `main` branch → click the green **Run workflow** button
+4. Click the running workflow to expand it and watch the logs in real time
 
-**EXPECTED logs:**
-```
-Run pip install -r pipeline/requirements.txt
-Successfully installed arxiv-... openai-... supabase-...
-
-Run python pipeline.py
-2024-01-15 05:00:xx  INFO  === Pipeline starting for 2024-01-15 ===
-2024-01-15 05:00:xx  INFO  Fetched N papers for 2024-01-15
-2024-01-15 05:00:xx  INFO  Processing N active user(s)
-...
-2024-01-15 05:00:xx  INFO  === Pipeline complete: N user(s) processed, N succeeded, 0 failed ===
-```
+**EXPECTED logs:** The check job reports `Manual dispatch — skipping time filter`; the pipeline job installs dependencies and emits structured `Pipeline starting`, `Papers fetched`, and `Pipeline complete` messages.
 
 Workflow status shows green ✓. Verify in Supabase that `pipeline_runs` rows were created/updated.
 
@@ -1357,15 +1321,17 @@ Workflow status shows green ✓. Verify in Supabase that `pipeline_runs` rows we
 **WHAT:** Confirm the cron schedule is correctly configured.
 
 **HOW:**
-1. Go to your repository → **Actions** tab → **Daily Pipeline**
-2. Look at the **Schedule** information in the workflow description, or go to the workflow YAML on GitHub and verify the `cron: "0 5 * * *"` line
+1. Go to your repository → **Actions** tab → **Pipeline**
+2. Inspect `.github/workflows/daily_pipeline.yml` and verify `cron: "0 * * * *"` and `workflow_dispatch` are configured.
 
 To see the next scheduled run:
-1. Go to **Actions → Daily Pipeline**
+1. Go to **Actions → Pipeline**
 2. If at least one run has occurred, you will see **"Scheduled"** in the trigger column
-3. GitHub does not show a countdown, but `0 5 * * *` means the next run is the next day at 05:00 UTC
+3. GitHub does not show a countdown; `0 * * * *` schedules a check at the top of every UTC hour. The full pipeline starts only when the check reports due users (or a query fallback).
 
-**EXPECTED:** The workflow file shows `cron: "0 5 * * *"` and `workflow_dispatch` as triggers.
+**EXPECTED:** The workflow has an hourly scheduled check and manual dispatch. Its anon request calls `get_active_digest_schedules`, which returns only `digest_hour` and `timezone_offset` for active configs, without a Notion filter.
+
+Before deploying the workflow change, apply the reviewed `20261013_anon_digest_schedules_rpc.sql` migration. Check the RPC with the anon key: it should return scheduling rows. A direct anon request for `user_configs?select=user_id&limit=1` must fail. The previous table-level grant allowed `user_id` even though a two-column grant was also present. If the migration is applied before the workflow change, the old gate's error fallback starts the pipeline each hour until the new workflow is deployed.
 
 **IF IT FAILS:** If the cron never fires, verify GitHub Actions is enabled for the repository (**Settings → Actions → General → Allow all actions**).
 
@@ -1373,16 +1339,18 @@ To see the next scheduled run:
 
 ### Test 8.3 — Secrets configured correctly
 
-**WHAT:** Verify all three required secrets exist in the repository.
+**WHAT:** Verify the workflow's required secrets exist in the repository.
 
 **HOW:**
 1. Go to **GitHub → Repository → Settings → Secrets and variables → Actions**
-2. Under **Repository secrets**, verify these three are present (values are hidden, only names are shown):
+2. Under **Repository secrets**, verify these are present (values are hidden, only names are shown):
    - `OPENAI_API_KEY`
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
+   - `SUPABASE_ANON_KEY`
+   - `NOTION_TOKEN_ENCRYPTION_KEY` (needed when connected users have encrypted Notion credentials)
 
-**EXPECTED:** All three names appear in the secrets list.
+**EXPECTED:** All required names appear in the secrets list. The lightweight `check` job uses the anon key; only the `pipeline` job uses the service role key.
 
 **IF IT FAILS (secret missing):** Click **New repository secret**, enter the name exactly as above (case-sensitive), and paste the value.
 
@@ -1624,8 +1592,8 @@ Use this checklist as your final go/no-go gate before inviting any beta users.
 - [ ] All Python imports succeed (Test 1.1)
 - [ ] Fetcher retrieves papers from arXiv and writes to papers_cache (Test 4.1)
 - [ ] Ranker scores papers correctly and filters at threshold 7.0 (Test 4.2)
-- [ ] Notion client creates page with correct structure (Test 4.3)
-- [ ] Full pipeline runs end-to-end with a real test user (Test 4.4)
+- [ ] Web-only user receives a scheduled in-app digest (Test 7.1)
+- [ ] Optional Notion client creates a page when configured (Test 4.3)
 - [ ] Pipeline exits cleanly with no active users (Test 4.5)
 - [ ] Cache deduplication prevents redundant arXiv calls (Test 4.6)
 
@@ -1636,7 +1604,7 @@ Use this checklist as your final go/no-go gate before inviting any beta users.
 - [ ] Landing page renders on mobile and desktop (Test 6.1)
 - [ ] Onboarding Step 1 validates profile description length (Test 6.2)
 - [ ] Onboarding Step 2 enforces 5-topic limit (Test 6.3)
-- [ ] Onboarding Step 3 test connection works with real Notion credentials (Test 6.4)
+- [ ] Optional Notion connection test works when configured (Test 6.4)
 - [ ] All 5 dashboard status card states render correctly (Test 6.5)
 - [ ] Run history table renders with correct colours and links (Test 6.6)
 - [ ] Settings save and persist across page refresh (Test 6.7)
@@ -1646,8 +1614,8 @@ Use this checklist as your final go/no-go gate before inviting any beta users.
 
 ### End to end verified
 
-- [ ] Full new user journey: sign up → onboard → run → Notion page (Test 7.1)
-- [ ] Duplicate run guard prevents second run on same day (Test 7.2)
+- [ ] Full new user journey: sign up → onboard without Notion → scheduled run → web reader (Test 7.1)
+- [ ] Unchanged same-day digest is served from cache (Test 7.2)
 - [ ] Changing topics in settings affects next run's paper selection (Test 7.3)
 
 ---
@@ -1665,8 +1633,8 @@ Use this checklist as your final go/no-go gate before inviting any beta users.
 ### GitHub Actions verified
 
 - [ ] Manual workflow trigger succeeds and shows green (Test 8.1)
-- [ ] `cron: "0 5 * * *"` schedule confirmed in workflow YAML (Test 8.2)
-- [ ] All three secrets present in GitHub repository settings (Test 8.3)
+- [ ] `cron: "0 * * * *"` schedule confirmed in workflow YAML (Test 8.2)
+- [ ] Required workflow secrets present in GitHub repository settings (Test 8.3)
 - [ ] Invalid secret causes visible red failure in Actions UI (Test 8.4)
 
 ---
