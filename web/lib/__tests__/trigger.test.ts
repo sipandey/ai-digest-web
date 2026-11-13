@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockGetAuthUserId, mockFrom, chain, mockSpawn } = vi.hoisted(() => {
+const { mockGetAuthUserId, mockFrom, mockRpc, chain, mockSpawn } = vi.hoisted(() => {
   const c = {
     select: vi.fn(),
     eq: vi.fn(),
@@ -17,6 +17,7 @@ const { mockGetAuthUserId, mockFrom, chain, mockSpawn } = vi.hoisted(() => {
   } as Record<string, ReturnType<typeof vi.fn>>;
 
   const mockFrom = vi.fn().mockReturnValue(c);
+  const mockRpc = vi.fn();
   const mockGetAuthUserId = vi.fn();
   const mockSpawn = vi.fn().mockReturnValue({
     unref: vi.fn(),
@@ -25,7 +26,7 @@ const { mockGetAuthUserId, mockFrom, chain, mockSpawn } = vi.hoisted(() => {
     stderr: { on: vi.fn() },
   });
 
-  return { mockGetAuthUserId, mockFrom, chain: c, mockSpawn };
+  return { mockGetAuthUserId, mockFrom, mockRpc, chain: c, mockSpawn };
 });
 
 vi.mock("@/lib/auth", () => ({
@@ -33,7 +34,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/supabase", () => ({
-  supabaseAdmin: { from: mockFrom },
+  supabaseAdmin: { from: mockFrom, rpc: mockRpc },
 }));
 
 vi.mock("node:child_process", () => ({
@@ -45,6 +46,17 @@ import { POST } from "../../app/api/pipeline/trigger/route";
 describe("POST /api/pipeline/trigger", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRpc.mockResolvedValue({
+      data: {
+        allowed: true,
+        reason: null,
+        daily_count: 1,
+        daily_limit: 50,
+        manual_count: 1,
+        manual_limit: 1,
+      },
+      error: null,
+    });
     process.env.PIPELINE_TRIGGER_MODE = "direct";
     process.env.SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "dummy-service-key";
@@ -71,9 +83,7 @@ describe("POST /api/pipeline/trigger", () => {
   it("returns 400 if user has not completed onboarding", async () => {
     mockGetAuthUserId.mockResolvedValue("user-123");
 
-    // 1. System budget check
-    chain.in.mockResolvedValueOnce({ count: 5, error: null });
-    // 2. User lookup returning no user_configs
+    // User lookup returning no user_configs
     chain.single.mockResolvedValueOnce({
       data: { id: "user-123", user_configs: [] },
       error: null,
@@ -88,9 +98,7 @@ describe("POST /api/pipeline/trigger", () => {
   it("allows trigger when user has onboarding config even without Notion", async () => {
     mockGetAuthUserId.mockResolvedValue("user-123");
 
-    // 1. System budget check
-    chain.in.mockResolvedValueOnce({ count: 5, error: null });
-    // 2. User lookup with config (no notion required)
+    // User lookup with config (no notion required)
     chain.single.mockResolvedValueOnce({
       data: {
         id: "user-123",
@@ -98,9 +106,9 @@ describe("POST /api/pipeline/trigger", () => {
       },
       error: null,
     });
-    // 3. Check existing run for today
+    // Check existing run for today
     chain.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
-    // 4. Insert pending run
+    // Insert pending run
     chain.single.mockResolvedValueOnce({
       data: { id: "run-new-456" },
       error: null,
@@ -118,7 +126,6 @@ describe("POST /api/pipeline/trigger", () => {
     mockGetAuthUserId.mockResolvedValue("user-123");
     delete process.env.OPENAI_API_KEY;
 
-    chain.in.mockResolvedValueOnce({ count: 5, error: null });
     chain.single.mockResolvedValueOnce({
       data: {
         id: "user-123",

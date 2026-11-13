@@ -37,10 +37,10 @@ const LENS_DATA: Record<
     spotlightTitle: "Product Opportunity",
     spotlightIcon: "🎯",
     takeaway:
-      "Unlocks high-value document QA over complex enterprise corpora (financial filings, clinical protocols, technical manuals) without context window ballooning or hallucination. Defensible RAG architecture.",
+      "Could help teams answer questions across large document collections without placing every document chunk into one prompt.",
     subTitle: "💡 Market & Cost Signal",
     subContent:
-      "Direct replacement for expensive long-context brute force prompting with +20% higher multi-hop accuracy at a fraction of token inference cost.",
+      "Potential value: explore whether hierarchical summaries reduce retrieval cost while preserving answer quality for a target workflow.",
     bannerGradient: "from-emerald-50 via-emerald-50/50 to-transparent",
     borderAccent: "border-emerald-500",
   },
@@ -50,7 +50,7 @@ const LENS_DATA: Record<
     spotlightTitle: "Theoretical Insight",
     spotlightIcon: "🔬",
     takeaway:
-      "Demonstrates that recursive abstraction trees bridge local text semantics and global document coherence, overcoming fundamental information bottlenecks in dense retrieval architectures.",
+      "Studies how recursive summaries can connect local passages with document-level context in retrieval systems.",
     subTitle: "📖 Theoretical Foundations",
     subContent:
       "Tree-structured indexation, dense retriever latent representations, recursive summarization dynamics.",
@@ -67,8 +67,8 @@ export function InteractiveLensPreview() {
     <div className="bg-white border border-gray-200 rounded-3xl overflow-hidden shadow-sm max-w-2xl mx-auto transition-all">
       {/* Top Lens Selector Tabs */}
       <div className="bg-gray-50/80 px-4 sm:px-6 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-          Interactive Synthesis Lens:
+        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          Illustrative sample · not a live digest
         </span>
         <div className="flex items-center gap-1.5 p-1 bg-white rounded-xl border border-gray-200 shadow-2xs">
           {(["builder", "founder", "researcher"] as LensType[]).map((lens) => (
@@ -94,12 +94,12 @@ export function InteractiveLensPreview() {
         {/* Paper Meta */}
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300/50">
-            9.1 / 10 Match
+            Illustrative example
           </span>
           <span className="text-xs bg-gray-100 text-gray-600 font-mono px-2 py-0.5 rounded-md">
             cs.LG · Retrieval Systems
           </span>
-          <span className="text-xs text-gray-400">Published yesterday</span>
+          <span className="text-xs text-gray-400">Sample paper · arXiv:2401.18059</span>
         </div>
 
         <h3 className="text-base sm:text-lg font-bold text-[#14141e] leading-snug mb-1">
@@ -149,7 +149,7 @@ export function InteractiveLensPreview() {
           <div className="py-2.5">
             <span className="font-bold text-gray-700">📊 Results: </span>
             <span className="text-gray-600 font-medium text-emerald-800">
-              +20% accuracy gain on QASPER and QuALITY vs flat RAG; +35% on multi-hop questions.
+              Compare reported results in the original paper; outcomes depend on the task and setup.
             </span>
           </div>
         </div>
@@ -157,11 +157,11 @@ export function InteractiveLensPreview() {
 
       {/* Card Footer */}
       <div className="px-6 py-3 bg-gray-50/80 border-t border-gray-100 flex items-center justify-between text-xs">
-        <span className="text-indigo-600 font-medium flex items-center gap-1">
-          <span>Read paper in full</span>
+        <a href="https://arxiv.org/abs/2401.18059" target="_blank" rel="noreferrer" className="text-indigo-600 font-medium flex items-center gap-1 hover:underline">
+          <span>Read the original paper</span>
           <span>↗</span>
-        </span>
-        <span className="text-gray-400">Delivered daily at 07:00 IST · AI Digest</span>
+        </a>
+        <span className="text-gray-500">Example synthesis · scores indicate personal relevance</span>
       </div>
     </div>
   );

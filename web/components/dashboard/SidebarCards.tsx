@@ -221,7 +221,15 @@ export function TodayStatusCard({
 
 // ── RunHistory ────────────────────────────────────────────────────────────────
 
-export function RunHistory({ runs }: { runs: PipelineRun[] }) {
+export function RunHistory({
+  runs,
+  digestDates,
+  onSelectDate,
+}: {
+  runs: PipelineRun[];
+  digestDates: string[];
+  onSelectDate: (date: string) => void;
+}) {
   if (runs.length === 0) return null;
 
   return (
@@ -234,12 +242,25 @@ export function RunHistory({ runs }: { runs: PipelineRun[] }) {
         {runs.slice(0, 7).map((run) => {
           const style = STATUS_STYLES[run.status] ?? STATUS_STYLES.pending;
           return (
-            <div key={run.id} className="px-5 py-2.5 flex items-center justify-between text-xs">
-              <div>
-                <p className="font-medium text-[#14141e]">{formatRunDate(run.run_date)}</p>
+            <div key={run.id} className="px-5 py-2.5 flex items-center justify-between text-xs gap-2">
+              <div className="min-w-0">
+                {digestDates.includes(run.run_date) ? (
+                  <button
+                    type="button"
+                    onClick={() => onSelectDate(run.run_date)}
+                    className="font-medium text-indigo-700 hover:underline focus-visible:outline-2 focus-visible:outline-indigo-600"
+                    aria-label={`Open saved digest from ${formatRunDate(run.run_date)}`}
+                  >
+                    {formatRunDate(run.run_date)} · Read digest
+                  </button>
+                ) : (
+                  <p className="font-medium text-[#14141e]">{formatRunDate(run.run_date)}</p>
+                )}
                 <p className="text-gray-400 text-[11px]">
-                  {run.status === "complete"
-                    ? `${run.papers_passed} papers · ${run.top_score ?? "—"}/10`
+                  {run.status === "complete" || run.status === "empty"
+                    ? digestDates.includes(run.run_date)
+                      ? `${run.papers_passed} papers · ${run.top_score ?? "—"}/10`
+                      : "Results unavailable for this run"
                     : style.label}
                 </p>
               </div>

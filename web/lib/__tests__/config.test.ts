@@ -175,7 +175,7 @@ describe("/api/users/config", () => {
       // `active: false` is the only field — no user_configs upsert, only users update.
       const mockUpdate = vi.fn().mockReturnValue(chain);
       chain.update = mockUpdate;
-      chain.eq.mockResolvedValue({ data: null, error: null });
+      chain.maybeSingle.mockResolvedValueOnce({ data: { id: "user-123" }, error: null });
 
       const req = new NextRequest("http://localhost:3100/api/users/config", {
         method: "PATCH",

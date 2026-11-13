@@ -19,16 +19,16 @@ export default function TermsPage() {
 
       <main className="max-w-2xl mx-auto px-5 py-16">
         <h1 className="text-3xl font-bold text-[#14141e] mb-2">Terms of Service</h1>
-        <p className="text-sm text-gray-400 mb-12">Last updated: May 2025</p>
+        <p className="text-sm text-gray-400 mb-12">Last updated: November 13, 2026</p>
 
         <div className="space-y-10 text-sm text-gray-600 leading-relaxed">
 
           <section>
             <h2 className="text-base font-semibold text-[#14141e] mb-3">1. What AI Digest is</h2>
             <p>
-              AI Digest is a free service that fetches newly published arXiv papers, scores their
-              relevance to your stated interests using OpenAI&apos;s API, and writes personalised
-              summaries to a Notion database you control. By creating an account or using the
+              AI Digest is a free pilot that finds newly published arXiv papers, estimates their
+              relevance to your interests, and creates personalized summaries in the in-app reader.
+              Email, webhooks, and Notion are optional delivery destinations. By creating an account or using the
               service you agree to these terms.
             </p>
           </section>
@@ -42,9 +42,9 @@ export default function TermsPage() {
                 circumvent usage limits (e.g. the daily pipeline run cap) is not permitted.
               </li>
               <li>
-                Use is limited to individual, non-commercial research and learning purposes.
-                You may not use AI Digest to build a competing service, resell digests, or
-                systematically scrape its outputs.
+                You may use AI Digest for personal or professional research and learning. You may
+                not resell digests, systematically scrape the service, or use its output to build
+                a competing service.
               </li>
             </ul>
           </section>
@@ -103,7 +103,10 @@ export default function TermsPage() {
           <section>
             <h2 className="text-base font-semibold text-[#14141e] mb-3">5. Service availability</h2>
             <p>
-              AI Digest is provided free of charge and on a best-effort basis. We do not
+              AI Digest is provided free of charge during the pilot and on a best-effort basis. The
+              pilot allows one manual generation per account per UTC day; scheduled generations depend
+              on your active schedule and available shared capacity. We may enforce additional daily
+              service capacity limits to protect reliability and prevent abuse. We do not
               guarantee uninterrupted delivery, a specific number of papers per digest,
               or that the service will remain available indefinitely. Scheduled deliveries
               depend on arXiv&apos;s API, OpenAI&apos;s API, Notion&apos;s API, and GitHub Actions —

@@ -33,6 +33,9 @@ export default function SchedulePillar({
           </div>
           <button
             type="button"
+            role="switch"
+            aria-checked={deliveryActive}
+            aria-label="Automated daily delivery"
             onClick={() => setDeliveryActive(!deliveryActive)}
             className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
               deliveryActive ? "bg-indigo-600" : "bg-gray-300"

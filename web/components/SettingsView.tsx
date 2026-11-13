@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useClerk } from "@clerk/nextjs";
+import { useClerk, useUser } from "@clerk/nextjs";
 import BottomNav from "@/components/BottomNav";
 import {
   Config,
@@ -16,6 +16,7 @@ import IntelligencePillar from "./settings/IntelligencePillar";
 import SchedulePillar from "./settings/SchedulePillar";
 import ChannelsPillar from "./settings/ChannelsPillar";
 import AccountPillar from "./settings/AccountPillar";
+import { recordProductEvent } from "@/lib/product-events";
 
 function Skeleton({ className }: { className: string }) {
   return <div className={`bg-gray-200 rounded-xl animate-pulse ${className}`} />;
@@ -45,6 +46,7 @@ function ToastBanner({ toast, onDismiss }: { toast: Toast; onDismiss: () => void
 
 export default function SettingsView() {
   const { signOut } = useClerk();
+  const { user } = useUser();
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("intelligence");
@@ -76,6 +78,7 @@ export default function SettingsView() {
 
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -180,6 +183,9 @@ export default function SettingsView() {
 
       const ok = await patchConfig(payload);
       if (ok) {
+        if (config?.active !== false && !deliveryActive) {
+          recordProductEvent("schedule_paused");
+        }
         setConfig((c) => (c ? { ...c, ...payload } : null));
         showToast("All changes saved successfully", "success");
       } else {
@@ -257,6 +263,29 @@ export default function SettingsView() {
       }
     } finally {
       setSigningOut(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!user) {
+      showToast("Account deletion is unavailable for this sign-in type. Contact support for help.", "error");
+      return;
+    }
+    setDeletingAccount(true);
+    try {
+      if (userProfile?.authMethod === "notion") {
+        const response = await fetch("/api/users/export", { method: "DELETE" });
+        if (!response.ok) throw new Error("Deletion failed");
+        window.location.assign("/");
+      } else if (user) {
+        await user.delete();
+        await signOut({ redirectUrl: "/" });
+      } else {
+        throw new Error("Account session unavailable");
+      }
+    } catch {
+      showToast("Could not delete the account. Please try again.", "error");
+      setDeletingAccount(false);
     }
   }
 
@@ -362,6 +391,8 @@ export default function SettingsView() {
             userProfile={userProfile}
             onSignOut={handleSignOut}
             signingOut={signingOut}
+            onDeleteAccount={handleDeleteAccount}
+            deletingAccount={deletingAccount}
           />
         )}
       </div>
