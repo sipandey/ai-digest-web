@@ -159,6 +159,86 @@ def _already_delivered_today(user_id: str, run_date: str) -> bool:
     return len(result.data) > 0
 
 
+def _claim_run_attempt(user_id: str, run_date: str, source: str) -> bool:
+    """Claim shared daily capacity before any per-user scoring or delivery."""
+    try:
+        result = supabase.rpc(
+            "claim_pipeline_run_attempt",
+            {"p_user_id": user_id, "p_run_date": run_date, "p_source": source},
+        ).execute()
+        claim = result.data
+        if not isinstance(claim, dict):
+            raise RuntimeError("Budget service returned an invalid response")
+        if claim.get("allowed") is True:
+            log.info(
+                "Pipeline attempt capacity claimed",
+                extra={
+                    "user_id": user_id,
+                    "run_date": run_date,
+                    "source": source,
+                    "daily_count": claim.get("daily_count"),
+                    "daily_limit": claim.get("daily_limit"),
+                },
+            )
+            return True
+        log.info(
+            "Pipeline attempt skipped by shared budget",
+            extra={"user_id": user_id, "run_date": run_date, "source": source,
+                   "reason": claim.get("reason")},
+        )
+        return False
+    except Exception as exc:
+        # Fail closed: no scoring or model calls while the shared budget is unavailable.
+        log.error(
+            "Could not claim pipeline attempt; skipping user",
+            extra={"user_id": user_id, "run_date": run_date, "source": source,
+                   "error": str(exc)},
+        )
+        return False
+
+
+def _update_run_attempt(
+    user_id: str, run_date: str, source: str, status: str, error_class: Optional[str] = None
+) -> None:
+    """Record an attempt outcome without storing user content or raw errors."""
+    try:
+        fields = {"status": status, "error_class": error_class}
+        fields["completed_at"] = (
+            _now() if status in {"complete", "empty", "failed", "skipped"} else None
+        )
+        supabase.table("pipeline_run_attempts").update(
+            fields
+        ).eq("user_id", user_id).eq("run_date", run_date).eq("source", source).execute()
+    except Exception as exc:
+        log.warning(
+            "Could not update pipeline attempt outcome",
+            extra={"user_id": user_id, "run_date": run_date, "source": source,
+                   "status": status, "error": str(exc)},
+        )
+
+
+def _has_reserved_manual_attempt(user_id: str, run_date: str) -> bool:
+    """Check whether the authenticated web route already reserved today's work."""
+    try:
+        result = (
+            supabase.table("pipeline_run_attempts")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("run_date", run_date)
+            .eq("source", "manual")
+            .eq("status", "reserved")
+            .limit(1)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as exc:
+        log.error(
+            "Could not verify manual pipeline reservation",
+            extra={"user_id": user_id, "run_date": run_date, "error": str(exc)},
+        )
+        return False
+
+
 def _load_seen_paper_ids(user_id: str) -> set:
     """Return the set of arXiv IDs already delivered to *user_id* on any past day.
 
@@ -292,6 +372,10 @@ def _fail_pending_runs(run_date: str, target_user_id: Optional[str], error: str)
         if target_user_id:
             query = query.eq("user_id", target_user_id)
         query.execute()
+        if target_user_id:
+            _update_run_attempt(
+                target_user_id, run_date, "manual", "failed", "pipeline_start_error"
+            )
         log.info(
             "Marked pending/running runs as failed",
             extra={"run_date": run_date, "target_user_id": target_user_id, "error": error},
@@ -380,7 +464,7 @@ def main() -> None:
         _fail_pending_runs(run_date, target_user_id, str(exc))
         raise
 
-    if skip_time_filter:
+    if target_user_id or skip_time_filter:
         users = all_users
         log.info(
             "Time filter skipped (manual dispatch) — processing all users",
@@ -398,6 +482,23 @@ def main() -> None:
                 "users_skipped": skipped,
             },
         )
+
+    # Web requests reserve before dispatch. Other manual workflow invocations
+    # claim here; scheduled work claims through the same database function.
+    if target_user_id and not all(
+        _has_reserved_manual_attempt(user["user_id"], run_date) for user in users
+    ):
+        users = [
+            user for user in users
+            if _has_reserved_manual_attempt(user["user_id"], run_date)
+            or _claim_run_attempt(user["user_id"], run_date, "manual")
+        ]
+    elif not target_user_id:
+        attempt_source = "manual" if skip_time_filter else "scheduled"
+        users = [
+            user for user in users
+            if _claim_run_attempt(user["user_id"], run_date, attempt_source)
+        ]
 
     if not users:
         log.info(
@@ -446,6 +547,7 @@ def main() -> None:
 
     succeeded = 0
     failed = 0
+    attempt_source = "manual" if (target_user_id or skip_time_filter) else "scheduled"
 
     for user_config in users:
         user_id: str = user_config["user_id"]
@@ -465,12 +567,15 @@ def main() -> None:
             # in every hourly check after their target hour. This prevents a
             # second delivery once the first run completed.
             if _already_delivered_today(user_id, run_date):
+                _update_run_attempt(user_id, run_date, attempt_source, "skipped")
                 log.info(
                     "User already delivered today — skipping",
                     extra={"run_date": run_date, "user_id": user_id, "email": email},
                 )
                 succeeded += 1
                 continue
+
+            _update_run_attempt(user_id, run_date, attempt_source, "running")
 
             # Mark run as started — must be inside try/except so a DB or network
             # error here doesn't crash the outer loop and skip all remaining users.
@@ -532,6 +637,7 @@ def main() -> None:
                     }
                 ).eq("id", run_id).execute()
                 _save_user_digest(user_id, run_date, lens, [])
+                _update_run_attempt(user_id, run_date, attempt_source, "empty")
                 log.info(
                     "User run empty — no papers passed threshold",
                     extra={"run_date": run_date, "run_id": run_id, "user_id": user_id},
@@ -592,6 +698,7 @@ def main() -> None:
                     "completed_at": _now(),
                 }
             ).eq("id", run_id).execute()
+            _update_run_attempt(user_id, run_date, attempt_source, "complete")
 
             log.info(
                 "User run complete",
@@ -611,6 +718,9 @@ def main() -> None:
                 "User run failed",
                 extra={"run_date": run_date, "run_id": run_id, "user_id": user_id, "error": str(exc)},
                 exc_info=True,
+            )
+            _update_run_attempt(
+                user_id, run_date, attempt_source, "failed", type(exc).__name__[:100]
             )
             # Only update pipeline_runs if we successfully obtained a run_id
             # (i.e. _upsert_run didn't throw). If it did throw, run_id is ""

@@ -33,9 +33,10 @@ def _decrypt_user_row(row: dict) -> dict:
 
 
 def get_active_users(user_id: Optional[str] = None) -> list[dict]:
-    """Return user_config rows for all active users.
+    """Return schedule-active users, or the requested user for manual work.
 
-    Joins user_configs → users. Filters out deactivated parent accounts.
+    Joins user_configs → users. Scheduled discovery excludes paused accounts;
+    an explicit user lookup remains available for an on-demand manual run.
     Paginates in chunks of _PAGE_SIZE so the result is never silently
     truncated (Supabase returns at most 1000 rows per request with no error).
     """
@@ -48,11 +49,7 @@ def get_active_users(user_id: Optional[str] = None) -> list[dict]:
             .eq("user_id", user_id)
             .execute()
         )
-        return [
-            _decrypt_user_row(r)
-            for r in response.data
-            if r.get("users", {}).get("active", True)
-        ]
+        return [_decrypt_user_row(r) for r in response.data]
 
     all_rows: list[dict] = []
     offset = 0

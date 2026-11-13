@@ -4,31 +4,43 @@ import { getAuthUserId } from "@/lib/auth";
 
 type TriggerMode = "direct" | "github_actions";
 
-// Maximum number of manual pipeline triggers allowed per user per day.
-// The scheduled morning run does not count toward this limit (it bypasses
-// this route entirely via GitHub Actions cron).
-const MAX_DAILY_TRIGGERS = 3;
+type AttemptClaim = {
+  allowed: boolean;
+  reason: "daily_limit" | "user_limit" | "already_scheduled" | null;
+  daily_count: number;
+  daily_limit: number;
+  manual_count?: number;
+  manual_limit?: number;
+};
 
-// System-wide cap on total successful pipeline runs per day across all users.
-// Protects against runaway OpenAI spend from viral growth or multi-account abuse.
-// Only counts non-failed runs (pending/running/complete/empty) — failed runs may
-// not have consumed any OpenAI tokens and shouldn't block legitimate users.
-// Override via SYSTEM_DAILY_RUN_BUDGET env var without a code deploy.
-const SYSTEM_DAILY_RUN_BUDGET = parseInt(
-  process.env.SYSTEM_DAILY_RUN_BUDGET ?? "200",
-  10,
-);
+async function claimManualAttempt(userId: string, runDate: string) {
+  const { data, error } = await supabaseAdmin.rpc("claim_pipeline_run_attempt", {
+    p_user_id: userId,
+    p_run_date: runDate,
+    p_source: "manual",
+  });
+
+  if (error || !data) {
+    console.error("Pipeline attempt budget unavailable:", error);
+    return { error: "Usage limits are temporarily unavailable. Please try again shortly." } as const;
+  }
+
+  const claim = data as AttemptClaim;
+  if (!claim.allowed) {
+    if (claim.reason === "user_limit") {
+      return { error: "You have used today's manual digest run. Your scheduled digest will run at your next delivery time.", dailyLimitReached: true } as const;
+    }
+    if (claim.reason === "daily_limit") {
+      return { error: "Today's shared digest capacity is full. Please try again tomorrow.", dailyLimitReached: true } as const;
+    }
+    return { error: "A digest attempt is already queued for today." } as const;
+  }
+
+  return { claim } as const;
+}
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function secondsUntilMidnightUTC(): number {
-  const now = new Date();
-  const midnight = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
-  );
-  return Math.ceil((midnight.getTime() - now.getTime()) / 1000);
 }
 
 function getTriggerMode(): TriggerMode {
@@ -136,6 +148,7 @@ async function spawnLocalPipeline(userId: string, runDate: string) {
       SUPABASE_URL: supabaseUrl,
       PIPELINE_USER_ID: userId,
       PIPELINE_RUN_DATE: runDate,
+      PIPELINE_SKIP_TIME_FILTER: "true",
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -172,7 +185,7 @@ async function dispatchPipelineService(userId: string, runDate: string) {
   }
 }
 
-async function markRunFailed(runId: string, message: string) {
+async function markRunFailed(runId: string, message: string, userId: string, runDate: string) {
   await supabaseAdmin
     .from("pipeline_runs")
     .update({
@@ -181,6 +194,12 @@ async function markRunFailed(runId: string, message: string) {
       completed_at: new Date().toISOString(),
     })
     .eq("id", runId);
+  await supabaseAdmin
+    .from("pipeline_run_attempts")
+    .update({ status: "failed", error_class: "dispatch_error", completed_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("run_date", runDate)
+    .eq("source", "manual");
 }
 
 export async function POST() {
@@ -191,34 +210,6 @@ export async function POST() {
 
   try {
     const today = todayISO();
-
-    // ── System-wide daily budget check ───────────────────────────────────────
-    // Count all non-failed runs today. A fast HEAD+count query — no rows returned.
-    // Failed runs are excluded: they may not have consumed OpenAI resources and
-    // shouldn't penalise legitimate users. If the budget check itself fails
-    // (transient DB error) we log and continue — the next query will surface it.
-    const { count: systemRunCount, error: budgetError } = await supabaseAdmin
-      .from("pipeline_runs")
-      .select("id", { count: "exact", head: true })
-      .eq("run_date", today)
-      .in("status", ["pending", "running", "complete", "empty"]);
-
-    if (budgetError) {
-      console.error("System budget check error:", budgetError);
-      // Fail open — let the per-user checks proceed; DB errors surface there too.
-    } else if ((systemRunCount ?? 0) >= SYSTEM_DAILY_RUN_BUDGET) {
-      console.warn(
-        `System daily run budget reached: ${systemRunCount}/${SYSTEM_DAILY_RUN_BUDGET} on ${today}`,
-      );
-      return NextResponse.json(
-        {
-          error:
-            "The service has reached its daily capacity. Your scheduled digest will still run tomorrow morning.",
-          retryAfterSeconds: secondsUntilMidnightUTC(),
-        },
-        { status: 503 },
-      );
-    }
 
     // Resolve user + config in one query
     const { data: user, error: userError } = await supabaseAdmin
@@ -288,7 +279,7 @@ export async function POST() {
         return NextResponse.json({
           success: true,
           runId: existingRun.id,
-          runsRemainingToday: MAX_DAILY_TRIGGERS - triggerCount,
+          runsRemainingToday: 0,
           cached: true,
           message:
             "Your digest is already up to date. Update your topics or preferences to generate a new one.",
@@ -315,14 +306,11 @@ export async function POST() {
         }
       }
 
-      // ── Daily cap (DB-based, works across serverless instances) ──────────────
-      if (triggerCount >= MAX_DAILY_TRIGGERS) {
+      const attempt = await claimManualAttempt(user.id, today);
+      if ("error" in attempt) {
         return NextResponse.json(
-          {
-            error: `You've reached the limit of ${MAX_DAILY_TRIGGERS} manual runs today. Your scheduled digest will run again tomorrow morning.`,
-            dailyLimitReached: true,
-          },
-          { status: 429 }
+          { error: attempt.error, dailyLimitReached: "dailyLimitReached" in attempt ? attempt.dailyLimitReached : false },
+          { status: "dailyLimitReached" in attempt && attempt.dailyLimitReached ? 429 : 503 },
         );
       }
 
@@ -372,11 +360,11 @@ export async function POST() {
           dispatchError instanceof Error
             ? dispatchError.message
             : "Failed to trigger pipeline";
-        await markRunFailed(rerun.id, message);
+        await markRunFailed(rerun.id, message, user.id, today);
         throw dispatchError;
       }
 
-      const runsLeft = MAX_DAILY_TRIGGERS - (rerun.trigger_count ?? triggerCount + 1);
+      const runsLeft = Math.max(0, (attempt.claim.manual_limit ?? 1) - (attempt.claim.manual_count ?? 1));
       console.log(
         `Pipeline retriggered for user ${user.id} (run ${rerun.id}) via ${triggerMode} — ${runsLeft} manual trigger(s) remaining today`
       );
@@ -393,6 +381,14 @@ export async function POST() {
     }
 
     // ── First trigger today — insert the run row ──────────────────────────────
+    const attempt = await claimManualAttempt(user.id, today);
+    if ("error" in attempt) {
+      return NextResponse.json(
+        { error: attempt.error, dailyLimitReached: "dailyLimitReached" in attempt ? attempt.dailyLimitReached : false },
+        { status: "dailyLimitReached" in attempt && attempt.dailyLimitReached ? 429 : 503 },
+      );
+    }
+
     const { data: run, error: insertError } = await supabaseAdmin
       .from("pipeline_runs")
       .insert({ user_id: user.id, run_date: today, status: "pending", trigger_count: 1 })
@@ -417,7 +413,7 @@ export async function POST() {
         dispatchError instanceof Error
           ? dispatchError.message
           : "Failed to trigger pipeline";
-      await markRunFailed(run.id, message);
+      await markRunFailed(run.id, message, user.id, today);
       throw dispatchError;
     }
 
@@ -426,7 +422,7 @@ export async function POST() {
     return NextResponse.json({
       success: true,
       runId: run.id,
-      runsRemainingToday: MAX_DAILY_TRIGGERS - 1,
+      runsRemainingToday: Math.max(0, (attempt.claim.manual_limit ?? 1) - (attempt.claim.manual_count ?? 1)),
       message:
         triggerMode === "github_actions"
           ? "Your digest was queued in GitHub Actions. Check back in a few minutes."
