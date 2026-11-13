@@ -1,3 +1,14 @@
+---
+date: "2026-11-13"
+git_commit: "dbba62b"
+branch: "feature/product-growth-safety"
+repository: "AIDigestWeb"
+topic: "Product growth and abuse safety"
+tags: "research, product, onboarding, safety, pipeline"
+status: "complete"
+last_updated: "2026-11-13"
+---
+
 # Growth and Safety Product Research
 
 **Date:** 2026-11-13  
