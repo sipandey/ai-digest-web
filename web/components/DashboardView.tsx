@@ -51,6 +51,7 @@ export function DashboardView() {
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [digest, setDigest] = useState<Digest | null>(null);
   const [digestHistory, setDigestHistory] = useState<DigestHistoryItem[]>([]);
+  const [digestHistoryError, setDigestHistoryError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(todayISO());
   const [loadingDigest, setLoadingDigest] = useState(false);
   const [triggering, setTriggering] = useState(false);
@@ -67,7 +68,7 @@ export function DashboardView() {
         ]);
 
         if (configRes.status === 401 || runsRes.status === 401) {
-          router.replace("/sign-in");
+          router.replace("/login");
           return;
         }
 
@@ -82,9 +83,12 @@ export function DashboardView() {
           const digestData = await digestRes.json();
           setDigest(digestData.digest ?? null);
           setDigestHistory(digestData.history ?? []);
+          setDigestHistoryError(null);
           if (digestData.digest?.run_date) {
             setSelectedDate(digestData.digest.run_date);
           }
+        } else {
+          setDigestHistoryError("Could not load previous digest results. Please try again later.");
         }
       } catch {
         setLoadError("Could not load your dashboard. Please refresh the page.");
@@ -113,6 +117,7 @@ export function DashboardView() {
           const digestData = await digestRes.json();
           setDigest(digestData.digest ?? null);
           setDigestHistory(digestData.history ?? []);
+          setDigestHistoryError(null);
         }
       } catch {
         // silently ignore — next tick will retry
@@ -126,14 +131,17 @@ export function DashboardView() {
     if (date === selectedDate && digest) return;
     setSelectedDate(date);
     setLoadingDigest(true);
+    setDigestHistoryError(null);
     try {
       const res = await fetch(`/api/users/digests?date=${date}`);
       if (res.ok) {
         const data = await res.json();
         setDigest(data.digest ?? null);
+      } else {
+        setDigestHistoryError("Could not load this digest. Please try again later.");
       }
     } catch {
-      // silently ignore
+      setDigestHistoryError("Could not load this digest. Please check your connection and try again.");
     } finally {
       setLoadingDigest(false);
     }
@@ -296,6 +304,7 @@ export function DashboardView() {
             <DigestReader
               digest={digest}
               digestHistory={digestHistory}
+              digestHistoryError={digestHistoryError}
               selectedDate={selectedDate}
               loadingDigest={loadingDigest}
               onSelectDate={selectDigestDate}

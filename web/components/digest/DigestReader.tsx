@@ -57,6 +57,7 @@ function todayISO(): string {
 export function DigestReader({
   digest,
   digestHistory,
+  digestHistoryError,
   selectedDate,
   loadingDigest,
   onSelectDate,
@@ -69,6 +70,7 @@ export function DigestReader({
 }: {
   digest: Digest | null;
   digestHistory: DigestHistoryItem[];
+  digestHistoryError?: string | null;
   selectedDate: string;
   loadingDigest: boolean;
   onSelectDate: (date: string) => void;
@@ -210,7 +212,11 @@ export function DigestReader({
   return (
     <div className="space-y-4">
       {/* ── Date History Picker Bar ────────────────────────────────────────── */}
-      {digestHistory.length > 0 && (
+      {digestHistoryError ? (
+        <p role="status" className="text-sm text-amber-700">
+          {digestHistoryError}
+        </p>
+      ) : digestHistory.length > 0 ? (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {digestHistory.map((h) => {
             const isSelected = h.run_date === selectedDate;
@@ -239,6 +245,8 @@ export function DigestReader({
             );
           })}
         </div>
+      ) : (
+        <p className="text-sm text-gray-500">No previous digest results yet.</p>
       )}
 
       {/* ── Reader Card ────────────────────────────────────────────────────── */}

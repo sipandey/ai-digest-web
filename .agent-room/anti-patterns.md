@@ -21,6 +21,12 @@ Append a new entry every time:
 
 <!-- Entries go below this line, newest first. -->
 
+### 2026-11-12 — Database outage was treated as anonymous sign-in
+
+**What happened:** After Clerk sent a signed-in user to `/dashboard`, user lookup retried an unreachable Supabase host and the page appeared blank before falling back to an unauthorized redirect.
+**Root cause:** `getAuthUserId()` caught both Clerk context errors and Supabase failures in one broad `try` block, then returned `null` after a failed lookup and upsert.
+**Avoid:** Catch Clerk context errors separately. Propagate database failures to a route error boundary so an outage is visible instead of being mistaken for a signed-out user.
+
 ### 2026-10-13 — Column grant did not narrow an existing table grant
 
 **What happened:** The live anon key could select `user_id` from active `user_configs` despite a migration granting only two scheduling columns.

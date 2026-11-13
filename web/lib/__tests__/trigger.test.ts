@@ -113,4 +113,27 @@ describe("POST /api/pipeline/trigger", () => {
     expect(body.runId).toBe("run-new-456");
     expect(mockSpawn).toHaveBeenCalled();
   });
+
+  it("returns a configuration error before queuing when direct mode lacks OpenAI credentials", async () => {
+    mockGetAuthUserId.mockResolvedValue("user-123");
+    delete process.env.OPENAI_API_KEY;
+
+    chain.in.mockResolvedValueOnce({ count: 5, error: null });
+    chain.single.mockResolvedValueOnce({
+      data: {
+        id: "user-123",
+        user_configs: [{ id: "cfg-123", updated_at: null }],
+      },
+      error: null,
+    });
+
+    const res = await POST();
+    const body = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(body.error).toContain("OPENAI_API_KEY");
+    expect(chain.insert).not.toHaveBeenCalled();
+    expect(chain.update).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
 });
