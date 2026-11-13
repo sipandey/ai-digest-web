@@ -42,6 +42,31 @@ function getTriggerMode(): TriggerMode {
     : "direct";
 }
 
+function getTriggerConfigurationError(triggerMode: TriggerMode): string | null {
+  if (triggerMode === "github_actions") {
+    if (
+      !process.env.PIPELINE_GITHUB_TOKEN ||
+      !process.env.PIPELINE_GITHUB_REPOSITORY
+    ) {
+      return "Pipeline dispatch is not configured. Set PIPELINE_GITHUB_TOKEN and PIPELINE_GITHUB_REPOSITORY.";
+    }
+    return null;
+  }
+
+  if (process.env.PIPELINE_SERVICE_URL) return null;
+
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return "The local pipeline is not configured. Set SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL).";
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    return "The local pipeline is not configured. Add OPENAI_API_KEY to web/.env.local and restart the dev server.";
+  }
+
+  return null;
+}
+
 async function dispatchGitHubWorkflow(userId: string, runDate: string) {
   const token = process.env.PIPELINE_GITHUB_TOKEN;
   const repository = process.env.PIPELINE_GITHUB_REPOSITORY;
@@ -217,6 +242,10 @@ export async function POST() {
     const configUpdatedAt = configs[0]?.updated_at ?? null;
 
     const triggerMode = getTriggerMode();
+    const configurationError = getTriggerConfigurationError(triggerMode);
+    if (configurationError) {
+      return NextResponse.json({ error: configurationError }, { status: 503 });
+    }
 
     // Fetch today's run row — includes trigger_count for the daily cap check.
     const { data: existingRun, error: existingRunError } = await supabaseAdmin

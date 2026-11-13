@@ -13,12 +13,20 @@ export async function GET(req: NextRequest) {
     const dateParam = searchParams.get("date");
 
     // Fetch history of past digest dates for date navigation
-    const { data: historyData } = await supabaseAdmin
+    const { data: historyData, error: historyError } = await supabaseAdmin
       .from("digests")
       .select("run_date, lens, top_score")
       .eq("user_id", userId)
       .order("run_date", { ascending: false })
       .limit(14);
+
+    if (historyError) {
+      console.error("Error fetching digest history:", historyError);
+      return NextResponse.json(
+        { error: "Failed to fetch digest history" },
+        { status: 500 },
+      );
+    }
 
     let digestQuery = supabaseAdmin
       .from("digests")
