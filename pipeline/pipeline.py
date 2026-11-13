@@ -252,23 +252,20 @@ def _save_user_digest(
 ) -> None:
     """Upsert daily digest papers JSON into the digests table for in-app web viewing."""
     top_score = float(papers[0].get("score", 0)) if papers else None
-    try:
-        supabase.table("digests").upsert(
-            {
-                "user_id": user_id,
-                "run_date": run_date,
-                "lens": lens,
-                "papers": papers,
-                "top_score": top_score,
-            },
-            on_conflict="user_id,run_date",
-        ).execute()
-        log.info(
-            "Saved in-app digest record",
-            extra={"user_id": user_id, "run_date": run_date, "papers_count": len(papers)},
-        )
-    except Exception as exc:
-        log.warning("Failed to save in-app digest to digests table: %s", exc)
+    supabase.table("digests").upsert(
+        {
+            "user_id": user_id,
+            "run_date": run_date,
+            "lens": lens,
+            "papers": papers,
+            "top_score": top_score,
+        },
+        on_conflict="user_id,run_date",
+    ).execute()
+    log.info(
+        "Saved in-app digest record",
+        extra={"user_id": user_id, "run_date": run_date, "papers_count": len(papers)},
+    )
 
 
 # ── fatal-error recovery ───────────────────────────────────────────────────────

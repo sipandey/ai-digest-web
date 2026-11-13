@@ -248,3 +248,16 @@ class TestDigestPersistence:
             assert row["papers"] == []
             assert row["top_score"] is None
 
+    def test_save_user_digest_raises_when_persistence_fails(self):
+        from unittest.mock import patch, MagicMock
+        from pipeline import _save_user_digest
+
+        with patch("pipeline.supabase") as mock_sb:
+            mock_table = MagicMock()
+            mock_sb.table.return_value = mock_table
+            mock_table.upsert.return_value = mock_table
+            mock_table.execute.side_effect = RuntimeError("database unavailable")
+
+            with pytest.raises(RuntimeError, match="database unavailable"):
+                _save_user_digest("u-123", "2026-09-28", LENS_BUILDER, [SAMPLE_PAPER])
+
