@@ -9,6 +9,7 @@ export async function GET() {
   }
 
   try {
+    const runDate = new Date().toISOString().slice(0, 10);
     const { data: runs, error: runsError } = await supabaseAdmin
       .from("pipeline_runs")
       .select(
@@ -23,7 +24,37 @@ export async function GET() {
       return NextResponse.json({ error: "Failed to fetch runs" }, { status: 500 });
     }
 
-    return NextResponse.json({ runs: runs ?? [] });
+    const [attemptResult, dailyResult, budgetResult] = await Promise.all([
+      supabaseAdmin
+        .from("pipeline_run_attempts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("run_date", runDate)
+        .eq("source", "manual"),
+      supabaseAdmin
+        .from("pipeline_run_attempts")
+        .select("id", { count: "exact", head: true })
+        .eq("run_date", runDate),
+      supabaseAdmin
+        .from("pipeline_budget_settings")
+        .select("daily_attempt_limit, manual_attempt_limit")
+        .eq("singleton", true)
+        .maybeSingle(),
+    ]);
+    const usage = attemptResult.error || dailyResult.error || budgetResult.error
+      ? null
+      : {
+          manualAttemptsToday: attemptResult.count ?? 0,
+          manualLimit: budgetResult.data?.manual_attempt_limit ?? 1,
+          dailyAttempts: dailyResult.count ?? 0,
+          dailyLimit: budgetResult.data?.daily_attempt_limit ?? 50,
+        };
+
+    if (!usage) {
+      console.error("Could not load pipeline usage:", attemptResult.error ?? dailyResult.error ?? budgetResult.error);
+    }
+
+    return NextResponse.json({ runs: runs ?? [], usage });
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

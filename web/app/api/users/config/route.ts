@@ -464,15 +464,20 @@ export async function PATCH(req: NextRequest) {
 
     // Update `active` on the `users` table (vacation mode) — separate from user_configs.
     if (activeValue !== undefined) {
-      const { error: activeError } = await supabaseAdmin
+      const { data: activeRow, error: activeError } = await supabaseAdmin
         .from("users")
         .update({ active: activeValue })
-        .eq("id", userId);
-      if (activeError) {
+        .eq("id", userId)
+        .select("id")
+        .maybeSingle();
+      if (activeError || !activeRow) {
         console.error("Update users.active error:", activeError);
-        // Non-fatal: config was saved; surface the active value from request body.
+        return NextResponse.json(
+          { error: "Could not save schedule status. Your schedule setting was not changed." },
+          { status: 500 },
+        );
       }
-      // Merge active into the response so the client sees the updated value.
+      // Echo only after the database confirms the account row was updated.
       configData = { ...configData, active: activeValue };
     }
 
