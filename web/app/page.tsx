@@ -54,7 +54,7 @@ export default async function LandingPage() {
         {userId ? (
           <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold px-3.5 py-1.5 rounded-full mb-8">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span>Welcome back — Your briefing is ready</span>
+            <span>Welcome back — continue to your reader</span>
           </div>
         ) : (
           <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-medium px-3.5 py-1.5 rounded-full mb-8">
@@ -71,7 +71,7 @@ export default async function LandingPage() {
         </h1>
 
         <p className="mt-6 text-base sm:text-lg text-gray-600 max-w-xl mx-auto leading-relaxed">
-          A personalized daily briefing of breakthrough arXiv papers — evaluated for your domain, scored for your experience level, with tailored takeaways for builders, founders, and researchers.
+          A daily AI research briefing for builders. Find papers that match the systems you are shipping, with practical implementation takeaways. Founder and Researcher lenses are available too.
         </p>
 
         <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -103,7 +103,7 @@ export default async function LandingPage() {
 
         {!userId && (
           <p className="mt-4 text-xs text-gray-400">
-            Free forever for builders · In-App Reader · Email · Webhooks · Optional Notion
+            Free pilot · One manual run per UTC day · In-app reader · Optional email, webhooks, and Notion
           </p>
         )}
       </section>
@@ -115,7 +115,7 @@ export default async function LandingPage() {
             Interactive Synthesis Demo
           </p>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-[#14141e] text-center mb-3">
-            One paper. Three executive perspectives.
+            One paper. Three ways to explore it.
           </h2>
           <p className="text-sm text-gray-500 text-center mb-10 max-w-lg mx-auto">
             Click between lenses to see how our synthesis engine adapts the executive takeaway for your specific role.
@@ -132,7 +132,7 @@ export default async function LandingPage() {
             How it works
           </p>
           <h2 className="text-2xl sm:text-3xl font-bold text-[#14141e] text-center mb-14">
-            From 300+ arXiv preprints to 5 actionable papers
+            From new AI research to a focused builder reading list
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -182,8 +182,8 @@ export default async function LandingPage() {
             {[
               {
                 icon: "🎯",
-                title: "Calibrated 0-10 match score",
-                body: "Papers ranked strictly against your technical domain and project profile, filtering out irrelevant noise.",
+                title: "Personal relevance score",
+                body: "A 0–10 estimate of how closely a paper matches your topics and profile. It is not a measure of scientific quality.",
               },
               {
                 icon: "🏗️",
@@ -232,7 +232,7 @@ export default async function LandingPage() {
             {[
               {
                 q: "Do I need a Notion account to use AI Digest?",
-                a: "No! AI Digest features a full native in-app Web Reader and daily email briefings. Notion integration is completely optional for users who want to archive digests in their workspace.",
+                a: "No. Read your digest in the app. Email, webhooks, and Notion are optional destinations.",
               },
               {
                 q: "How does the relevance scoring work?",
@@ -244,11 +244,11 @@ export default async function LandingPage() {
               },
               {
                 q: "What if no papers match my interests on a given day?",
-                a: "The pipeline only publishes papers that meet your relevance threshold. On quiet days (such as arXiv weekend freezes), you receive zero noise — only quality papers when they appear.",
+                a: "Some days may have no papers that meet your relevance threshold. The score estimates fit to your interests; it does not rate scientific quality.",
               },
               {
                 q: "How much does it cost?",
-                a: "AI Digest is completely free for individual builders and researchers. It runs on public arXiv feeds and optimized LLM evaluation.",
+                a: "AI Digest is free during the pilot. You can request one manual run per UTC day; scheduled runs depend on your active schedule and shared daily capacity.",
               },
             ].map(({ q, a }) => (
               <details key={q} className="group bg-white border border-gray-200 rounded-2xl">

@@ -1,9 +1,10 @@
 "use client";
 
 import { useClerk } from "@clerk/nextjs";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TIMEZONES, fmtRawOffset, detectTimezoneOffset } from "@/lib/timezones";
+import { recordProductEvent } from "@/lib/product-events";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,7 @@ export default function OnboardingForm() {
   const { signOut } = useClerk();
 
   const [step, setStep] = useState(1);
+  const [restored, setRestored] = useState(false);
   const [form, setForm] = useState<FormData>(() => ({
     profileDescription: "",
     experienceLevel: "developer_learning_ai",
@@ -90,8 +92,37 @@ export default function OnboardingForm() {
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("ai-digest-onboarding");
+      if (saved) {
+        const parsed = JSON.parse(saved) as { form?: Partial<FormData>; step?: number };
+        if (parsed.form && typeof parsed.form === "object") {
+          setForm((current) => ({
+            ...current,
+            ...parsed.form,
+            notionToken: "",
+            notionDatabaseId: "",
+          }));
+        }
+        if (typeof parsed.step === "number" && parsed.step >= 1 && parsed.step <= TOTAL_STEPS) {
+          setStep(parsed.step);
+        }
+      }
+    } catch {
+      sessionStorage.removeItem("ai-digest-onboarding");
+    }
+    setRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!restored) return;
+    const { notionToken: _token, notionDatabaseId: _databaseId, ...safeForm } = form;
+    sessionStorage.setItem("ai-digest-onboarding", JSON.stringify({ form: safeForm, step }));
+  }, [form, restored, step]);
+
   // ── Validation ───────────────────────────────────────────────────────────────
-  const step1Valid = form.profileDescription.trim().length >= 50;
+  const step1Valid = true;
   const step2Valid = form.topics.length >= 1;
   const step3Complete = connectionStatus === "success";
 
@@ -155,6 +186,8 @@ export default function OnboardingForm() {
         }),
       });
       if (res.ok) {
+        recordProductEvent("onboarding_completed");
+        sessionStorage.removeItem("ai-digest-onboarding");
         router.push("/dashboard");
       } else {
         const data = await res.json();
@@ -214,22 +247,20 @@ export default function OnboardingForm() {
         {step === 1 && (
           <>
             <h1 className="text-xl font-bold text-[#14141e] mb-1">What are you working on?</h1>
-            <p className="text-sm text-gray-500 mb-7">This shapes how we score papers for you.</p>
+            <p className="text-sm text-gray-500 mb-7">Choose a lens and experience level. Your topics are enough to start.</p>
 
             <div className="mb-6">
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Your project
+                Your project (optional)
               </label>
               <textarea
                 rows={4}
                 value={form.profileDescription}
                 onChange={(e) => setForm((f) => ({ ...f, profileDescription: e.target.value }))}
-                placeholder="e.g. I'm building a customer support chatbot using RAG. I have web development experience and I'm learning AI. I want papers I can build from immediately."
+                placeholder="e.g. I'm building a RAG assistant and want practical retrieval and evaluation techniques."
                 className="w-full bg-[#f4f4f8] border border-gray-200 focus:border-indigo-400 rounded-xl px-4 py-3 text-sm text-[#14141e] placeholder:text-gray-300 focus:outline-none resize-none transition-colors"
               />
-              <p className={`text-xs mt-2 transition-colors ${form.profileDescription.trim().length >= 50 ? "text-emerald-600" : "text-gray-300"}`}>
-                {form.profileDescription.trim().length} / 50 minimum
-              </p>
+              <p className="text-xs mt-2 text-gray-400">Optional · up to 500 characters. Add it later in settings.</p>
             </div>
 
             <div className="mb-6">

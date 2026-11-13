@@ -19,7 +19,7 @@ export default function PrivacyPage() {
 
       <main className="max-w-2xl mx-auto px-5 py-16">
         <h1 className="text-3xl font-bold text-[#14141e] mb-2">Privacy Policy</h1>
-        <p className="text-sm text-gray-400 mb-12">Last updated: May 2025</p>
+        <p className="text-sm text-gray-400 mb-12">Last updated: November 13, 2026</p>
 
         <div className="space-y-10 text-sm text-gray-600 leading-relaxed">
 
@@ -27,9 +27,11 @@ export default function PrivacyPage() {
             <h2 className="text-base font-semibold text-[#14141e] mb-3">What we collect</h2>
             <ul className="list-disc list-inside space-y-2">
               <li><span className="font-medium text-[#14141e]">Account info</span> — your email address and name, used to identify your account and send service emails.</li>
-              <li><span className="font-medium text-[#14141e]">Profile &amp; preferences</span> — your project description, experience level, topics, and digest delivery time, used solely to personalise your digest.</li>
+              <li><span className="font-medium text-[#14141e]">Profile &amp; preferences</span> — your project description, experience level, topics, lens, and digest delivery time, used by AI Digest and OpenAI to personalize your digest.</li>
               <li><span className="font-medium text-[#14141e]">Notion integration token &amp; database ID</span> — encrypted at the application layer (AES-256-GCM) before being stored in the database; used only to write your daily digest pages to your Notion workspace.</li>
-              <li><span className="font-medium text-[#14141e]">Pipeline logs</span> — run timestamps and paper counts, used for debugging and delivery confirmation. No paper content is stored server-side.</li>
+              <li><span className="font-medium text-[#14141e]">Digest and run history</span> — generated paper summaries and relevance scores are stored in your account so you can reopen previous results. Run timestamps, counts, and statuses are also stored.</li>
+              <li><span className="font-medium text-[#14141e]">Saved papers</span> — bookmarks are stored in this browser&apos;s local storage and do not sync across devices. An export includes bookmarks from the browser used to request it.</li>
+              <li><span className="font-medium text-[#14141e]">Product events</span> — an account-associated timestamp and allowlisted event name such as opening a digest, saving a paper, or pausing a schedule. Profile text, paper text, and paper identifiers are not included.</li>
             </ul>
           </section>
 
@@ -37,17 +39,17 @@ export default function PrivacyPage() {
             <h2 className="text-base font-semibold text-[#14141e] mb-3">What we never do</h2>
             <ul className="list-disc list-inside space-y-2">
               <li>We never read any existing Notion content — the integration only writes to the database you share with it.</li>
-              <li>We never sell or share your data with third parties for advertising or analytics.</li>
-              <li>We never store paper summaries or AI outputs server-side beyond the pipeline run that generated them.</li>
+              <li>We do not sell your data or send it to third-party advertising or analytics services.</li>
+              <li>We do not include project descriptions or paper content in first-party product event records.</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-[#14141e] mb-3">Third-party services</h2>
             <ul className="list-disc list-inside space-y-2">
-              <li><span className="font-medium text-[#14141e]">Clerk</span> — authentication for email/password accounts. Clerk's own privacy policy applies to data processed through their service.</li>
+              <li><span className="font-medium text-[#14141e]">Clerk</span> — authentication for accounts that use Clerk sign-in. Clerk&apos;s own privacy policy applies to data processed through their service.</li>
               <li><span className="font-medium text-[#14141e]">Supabase</span> — database and storage. Data is stored in Singapore (AWS ap-southeast-1).</li>
-              <li><span className="font-medium text-[#14141e]">OpenAI</span> — used to summarise papers and score relevance during each pipeline run. Paper abstracts are sent to OpenAI's API; no personal data is included in these requests.</li>
+              <li><span className="font-medium text-[#14141e]">OpenAI</span> — used to score and summarise papers. Paper titles and abstracts, plus your configured topics, experience level, lens, and optional project description, may be sent to OpenAI&apos;s API to personalize scoring and takeaways.</li>
               <li><span className="font-medium text-[#14141e]">Notion</span> — your integration token is used to write digest pages to your workspace via Notion's official API.</li>
             </ul>
           </section>
@@ -55,15 +57,16 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-base font-semibold text-[#14141e] mb-3">Data retention &amp; deletion</h2>
             <p>
-              Your account data is retained for as long as your account is active. When you delete your
-              account (via Clerk account settings), <span className="font-medium text-[#14141e]">all
-              data associated with your account is permanently deleted</span> — including your profile,
-              Notion credentials, topic preferences, pipeline run history, and the record of papers
-              already delivered to you. This deletion is immediate and irreversible.
+              Your account data is retained while your account is active. Delete your account from
+              Settings → Account. For Clerk accounts, AI Digest data is deleted when Clerk&apos;s deletion
+              webhook is processed; for Notion-first accounts, linked AI Digest records are deleted
+              when you confirm deletion. This removes your profile, encrypted integration credentials,
+              preferences, product events, usage attempts, digest history, run history, and feedback. Deletion is
+              irreversible. Pages already written to Notion remain in your workspace, and browser
+              bookmarks must be cleared separately from that browser.
             </p>
             <p className="mt-3">
-              You can also request manual deletion at any time by contacting us (see below), and we will
-              remove your data within 30 days.
+              You can request help with deletion at any time using the contact below.
             </p>
           </section>
 

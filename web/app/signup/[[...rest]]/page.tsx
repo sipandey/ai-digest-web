@@ -9,7 +9,7 @@ export default function SignUpPage() {
           AI Digest
         </p>
         <h1 className="text-2xl font-bold text-[#14141e]">Create your account</h1>
-        <p className="mt-2 text-sm text-gray-500">Free forever. No credit card needed.</p>
+        <p className="mt-2 text-sm text-gray-500">Free pilot. No credit card needed.</p>
       </div>
 
       <SignUp

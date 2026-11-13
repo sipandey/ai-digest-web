@@ -15,10 +15,18 @@ import {
   UserConfig,
 } from "./dashboard/SidebarCards";
 import { BottomNav } from "./BottomNav";
+import { recordProductEvent } from "@/lib/product-events";
 
 export type UserProfile = {
   name?: string;
   email?: string;
+};
+
+type PipelineUsage = {
+  manualAttemptsToday: number;
+  manualLimit: number;
+  dailyAttempts: number;
+  dailyLimit: number;
 };
 
 const TERMINAL_STATUSES = new Set(["complete", "failed", "empty"]);
@@ -49,6 +57,7 @@ export function DashboardView() {
   const [config, setConfig] = useState<UserConfig | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [runs, setRuns] = useState<PipelineRun[]>([]);
+  const [usage, setUsage] = useState<PipelineUsage | null>(null);
   const [digest, setDigest] = useState<Digest | null>(null);
   const [digestHistory, setDigestHistory] = useState<DigestHistoryItem[]>([]);
   const [digestHistoryError, setDigestHistoryError] = useState<string | null>(null);
@@ -61,10 +70,14 @@ export function DashboardView() {
   useEffect(() => {
     async function load() {
       try {
+        const requestedDate = new URLSearchParams(window.location.search).get("date");
+        const digestUrl = requestedDate
+          ? `/api/users/digests?date=${encodeURIComponent(requestedDate)}`
+          : "/api/users/digests";
         const [configRes, runsRes, digestRes] = await Promise.all([
           fetch("/api/users/config"),
           fetch("/api/users/runs"),
-          fetch("/api/users/digests"),
+          fetch(digestUrl),
         ]);
 
         if (configRes.status === 401 || runsRes.status === 401) {
@@ -78,13 +91,17 @@ export function DashboardView() {
 
         const runsData = await runsRes.json();
         setRuns(runsData.runs ?? []);
+        setUsage(runsData.usage ?? null);
 
         if (digestRes.ok) {
           const digestData = await digestRes.json();
+          if (digestData.digest) recordProductEvent("digest_opened");
           setDigest(digestData.digest ?? null);
           setDigestHistory(digestData.history ?? []);
           setDigestHistoryError(null);
-          if (digestData.digest?.run_date) {
+          if (requestedDate) {
+            setSelectedDate(requestedDate);
+          } else if (digestData.digest?.run_date) {
             setSelectedDate(digestData.digest.run_date);
           }
         } else {
@@ -113,8 +130,10 @@ export function DashboardView() {
         ]);
         const runsData = await runsRes.json();
         setRuns(runsData.runs ?? []);
+        setUsage(runsData.usage ?? null);
         if (digestRes.ok) {
           const digestData = await digestRes.json();
+          if (digestData.digest) recordProductEvent("digest_opened");
           setDigest(digestData.digest ?? null);
           setDigestHistory(digestData.history ?? []);
           setDigestHistoryError(null);
@@ -130,6 +149,9 @@ export function DashboardView() {
   async function selectDigestDate(date: string) {
     if (date === selectedDate && digest) return;
     setSelectedDate(date);
+    const url = new URL(window.location.href);
+    url.searchParams.set("date", date);
+    window.history.replaceState({}, "", url);
     setLoadingDigest(true);
     setDigestHistoryError(null);
     try {
@@ -137,6 +159,7 @@ export function DashboardView() {
       if (res.ok) {
         const data = await res.json();
         setDigest(data.digest ?? null);
+        if (data.digest) recordProductEvent("digest_opened");
       } else {
         setDigestHistoryError("Could not load this digest. Please try again later.");
       }
@@ -165,6 +188,7 @@ export function DashboardView() {
       if (runsRes.ok) {
         const runsData = await runsRes.json();
         setRuns(runsData.runs ?? []);
+        setUsage(runsData.usage ?? null);
       }
     } catch {
       setTriggerError("Network error. Please try again.");
@@ -173,10 +197,9 @@ export function DashboardView() {
     }
   }
 
-  const manualRunsToday = runs.filter(
-    (r) => r.run_date === todayISO() && r.status !== "failed"
-  ).length;
-  const dailyLimitReached = manualRunsToday >= 1;
+  const dailyLimitReached = Boolean(
+    usage && usage.manualAttemptsToday >= usage.manualLimit,
+  );
 
   if (loading) {
     return (
@@ -246,20 +269,29 @@ export function DashboardView() {
                   disabled
                   className="bg-gray-100 text-gray-400 border border-gray-200 text-xs font-semibold px-4 py-2.5 rounded-xl cursor-not-allowed"
                 >
-                  ✓ Run completed today
+                  ✓ Manual run used today
                 </button>
-                <p className="text-[10px] text-gray-400 mt-1">Manual limit: 1/day</p>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {usage?.dailyAttempts ?? 0}/{usage?.dailyLimit ?? 50} pilot runs used today
+                </p>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={triggerRun}
-                disabled={triggering}
-                className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 hover:shadow-indigo-200"
-              >
-                <span>⚡</span>
-                <span>Generate today&apos;s digest</span>
-              </button>
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={triggerRun}
+                  disabled={triggering}
+                  className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 hover:shadow-indigo-200"
+                >
+                  <span>⚡</span>
+                  <span>Generate today&apos;s digest</span>
+                </button>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {usage
+                    ? `${usage.dailyAttempts}/${usage.dailyLimit} shared pilot runs used today`
+                    : "1 manual run per UTC day · shared pilot capacity applies"}
+                </p>
+              </div>
             )}
           </div>
         </header>
@@ -341,7 +373,11 @@ export function DashboardView() {
                 triggerError={triggerError ?? undefined}
               />
 
-              <RunHistory runs={runs} />
+            <RunHistory
+              runs={runs}
+              digestDates={digestHistory.map((item) => item.run_date)}
+              onSelectDate={selectDigestDate}
+            />
 
               {config && <ConfigSummary config={config} />}
             </div>

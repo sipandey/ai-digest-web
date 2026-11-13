@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { isBookmarked, toggleBookmark, BOOKMARKS_EVENT_NAME } from "@/lib/bookmarks";
+import { recordProductEvent } from "@/lib/product-events";
 
 export type Paper = {
   arxiv_id: string;
@@ -64,6 +65,7 @@ export function PaperCard({
       pdf_url: paper.pdf_url,
     });
     setBookmarked(nextState);
+    if (nextState) recordProductEvent("paper_saved");
   };
 
   const handleCopyTakeaway = async () => {
@@ -83,6 +85,7 @@ export function PaperCard({
     if (!onRate) return;
     const isClearing = currentRating === rating;
     onRate(paper.arxiv_id, rating);
+    recordProductEvent("paper_feedback");
     const message = isClearing
       ? "Feedback cleared"
       : rating === "more"
@@ -104,6 +107,8 @@ export function PaperCard({
             #{rank}
           </span>
           <span
+            title="Personal relevance estimate based on your topics and profile; it is not a measure of scientific quality."
+            aria-label={`Personal relevance score ${score} out of 10. This estimates fit to your interests, not scientific quality.`}
             className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
               score >= 8.5
                 ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300/60"
@@ -112,7 +117,7 @@ export function PaperCard({
                 : "bg-gray-100 text-gray-700"
             }`}
           >
-            {score}/10
+            {score}/10 match
           </span>
           {paper.category && (
             <span className="text-xs bg-gray-100 text-gray-600 font-mono px-2 py-0.5 rounded-md">
@@ -132,6 +137,7 @@ export function PaperCard({
             type="button"
             onClick={handleCopyTakeaway}
             title="Copy takeaway summary to clipboard"
+            aria-label={copied ? "Takeaway copied" : "Copy takeaway summary"}
             className="text-xs px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200"
           >
             <span>{copied ? "✓" : "📋"}</span>
@@ -257,7 +263,14 @@ export function PaperCard({
       {/* Action Row: Expand Toggle & Feedback Tuning Buttons */}
       <div className="flex items-center justify-between pt-2.5 border-t border-gray-100 flex-wrap gap-2">
         <button
-          onClick={() => setExpanded(!expanded)}
+          type="button"
+          onClick={() => {
+            const nextExpanded = !expanded;
+            setExpanded(nextExpanded);
+            if (nextExpanded) recordProductEvent("paper_expanded");
+          }}
+          aria-expanded={expanded}
+          aria-controls={`details-${paper.arxiv_id}`}
           className="text-xs font-semibold text-gray-500 hover:text-indigo-600 transition-colors flex items-center gap-1.5"
         >
           <span>{expanded ? "Hide technical details" : "Technical breakdown & abstract"}</span>
@@ -278,6 +291,7 @@ export function PaperCard({
                 type="button"
                 onClick={() => handleRateWithFeedback("more")}
                 title="More like this (improves future suggestions)"
+                aria-pressed={currentRating === "more"}
                 className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 ${
                   currentRating === "more"
                     ? "bg-emerald-100 text-emerald-800 font-semibold ring-1 ring-emerald-300"
@@ -291,6 +305,7 @@ export function PaperCard({
                 type="button"
                 onClick={() => handleRateWithFeedback("less")}
                 title="Less like this (reduces similar papers)"
+                aria-pressed={currentRating === "less"}
                 className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 ${
                   currentRating === "less"
                     ? "bg-rose-100 text-rose-800 font-semibold ring-1 ring-rose-300"
@@ -307,7 +322,7 @@ export function PaperCard({
 
       {/* Expanded Sections */}
       {expanded && (
-        <div className="mt-3.5 pt-3.5 border-t border-gray-100 space-y-3 text-xs">
+        <div id={`details-${paper.arxiv_id}`} className="mt-3.5 pt-3.5 border-t border-gray-100 space-y-3 text-xs">
           {paper.problem && (
             <div>
               <p className="font-semibold text-gray-700 mb-0.5">🔍 Problem Solved</p>
